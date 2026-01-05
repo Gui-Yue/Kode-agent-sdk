@@ -172,6 +172,7 @@ export class Agent {
   private toolRecords = new Map<string, ToolCallRecord>();
   private interrupted = false;
   private processingPromise: Promise<void> | null = null;
+  private pendingNextRound: boolean = false; // 标志位：表示是否需要下一轮处理
   private lastProcessingStart = 0;
   private readonly PROCESSING_TIMEOUT = 5 * 60 * 1000; // 5 分钟
   private stepCount = 0;
@@ -795,14 +796,23 @@ export class Agent {
         });
         this.processingPromise = null; // 强制重启
       } else {
-        return; // 正常执行中
+        // 正常执行中，设置标志位表示需要下一轮
+        this.pendingNextRound = true;
+        return;
       }
     }
+
+    // 清除标志位，准备启动新的处理
+    this.pendingNextRound = false;
 
     this.lastProcessingStart = Date.now();
     this.processingPromise = this.runStep()
       .finally(() => {
         this.processingPromise = null;
+        // 如果有下一轮待处理，启动它
+        if (this.pendingNextRound) {
+          this.ensureProcessing();
+        }
       })
       .catch((err) => {
         // 确保异常不会导致状态卡住
