@@ -58,6 +58,8 @@ export {
   ModelResponse,
   ModelStreamChunk,
   AnthropicProvider,
+  OpenAIProvider,
+  GeminiProvider,
 } from './infra/provider';
 export { SandboxFactory } from './infra/sandbox-factory';
 

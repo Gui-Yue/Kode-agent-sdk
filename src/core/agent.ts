@@ -36,7 +36,7 @@ import { AgentTemplateRegistry, AgentTemplateDefinition, PermissionConfig, SubAg
 import { Store } from '../infra/store';
 import { Sandbox, SandboxKind } from '../infra/sandbox';
 import { SandboxFactory } from '../infra/sandbox-factory';
-import { ModelProvider, ModelConfig, AnthropicProvider } from '../infra/provider';
+import { ModelProvider, ModelConfig, AnthropicProvider, OpenAIProvider, GeminiProvider } from '../infra/provider';
 import { ToolRegistry, ToolInstance, ToolDescriptor } from '../tools/registry';
 import { Configurable } from './config';
 import { ContextManagerOptions } from './context-manager';
@@ -838,6 +838,7 @@ export class Agent {
 
     this.setState('WORKING');
     this.setBreakpoint('PRE_MODEL');
+    let doneEmitted = false;
 
     try {
       await this.messageQueue.flush();
@@ -899,11 +900,13 @@ export class Agent {
           } else if (chunk.content_block?.type === 'tool_use') {
             currentBlockIndex = chunk.index ?? 0;
             currentToolBuffer = '';
+            const meta = (chunk.content_block as any).meta;
             assistantBlocks[currentBlockIndex] = {
               type: 'tool_use',
               id: (chunk.content_block as any).id,
               name: (chunk.content_block as any).name,
-              input: {},
+              input: (chunk.content_block as any).input ?? {},
+              ...(meta ? { meta } : {}),
             };
           }
         } else if (chunk.type === 'content_block_delta') {
@@ -980,6 +983,7 @@ export class Agent {
         step: this.stepCount,
         reason: this.pendingPermissions.size > 0 ? 'interrupted' : 'completed',
       });
+      doneEmitted = true;
       this.lastBookmark = envelope.bookmark;
       this.stepCount++;
       this.scheduler.notifyStep(this.stepCount);
@@ -994,6 +998,19 @@ export class Agent {
         message: error?.message || 'Model execution failed',
         detail: { stack: error?.stack },
       });
+      if (!doneEmitted) {
+        const envelope = this.events.emitProgress({
+          channel: 'progress',
+          type: 'done',
+          step: this.stepCount,
+          reason: 'interrupted',
+        });
+        doneEmitted = true;
+        this.lastBookmark = envelope.bookmark;
+        this.stepCount++;
+        this.scheduler.notifyStep(this.stepCount);
+        this.todoManager.onStep();
+      }
     } finally {
       this.setState('READY');
       this.setBreakpoint('READY');
@@ -1848,7 +1865,19 @@ function ensureModelFactory(factory?: ModelFactory): ModelFactory {
       if (!config.apiKey) {
         throw new Error('Anthropic provider requires apiKey');
       }
-      return new AnthropicProvider(config.apiKey, config.model, config.baseUrl);
+      return new AnthropicProvider(config.apiKey, config.model, config.baseUrl, config.proxyUrl);
+    }
+    if (config.provider === 'openai') {
+      if (!config.apiKey) {
+        throw new Error('OpenAI provider requires apiKey');
+      }
+      return new OpenAIProvider(config.apiKey, config.model, config.baseUrl, config.proxyUrl);
+    }
+    if (config.provider === 'gemini') {
+      if (!config.apiKey) {
+        throw new Error('Gemini provider requires apiKey');
+      }
+      return new GeminiProvider(config.apiKey, config.model, config.baseUrl, config.proxyUrl);
     }
     throw new Error(`Model factory not provided for provider: ${config.provider}`);
   };
