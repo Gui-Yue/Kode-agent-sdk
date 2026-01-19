@@ -1,5 +1,6 @@
 import { Message } from '../types';
 import { ReminderOptions } from '../types';
+import { logger } from '../../utils/logger';
 
 export type PendingKind = 'user' | 'reminder';
 
@@ -63,7 +64,7 @@ export class MessageQueue {
       this.pending = this.pending.filter(item => !queue.includes(item));
     } catch (err) {
       // 失败：保留队列，下次重试
-      console.error('[MessageQueue] Flush failed, messages retained:', err);
+      logger.error('[MessageQueue] Flush failed, messages retained:', err);
       throw err; // 重新抛出让调用者知道失败
     }
   }

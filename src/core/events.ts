@@ -10,6 +10,7 @@ import {
   Bookmark,
 } from '../core/types';
 import { Store } from '../infra/store';
+import { logger } from '../utils/logger';
 
 type ControlEventType = ControlEvent['type'];
 type MonitorEventType = MonitorEvent['type'];
@@ -204,7 +205,7 @@ export class EventBus {
             }
           } else {
             // 非关键事件失败：仅记录日志
-            console.warn(`[EventBus] Failed to persist non-critical event: ${event.type}`, err);
+            logger.warn(`[EventBus] Failed to persist non-critical event: ${event.type}`, err);
           }
         });
     }
@@ -278,7 +279,7 @@ export class EventBus {
         }
         return;
       } catch (error) {
-        console.error('Failed to replay events from store:', error);
+        logger.error('Failed to replay events from store:', error);
       }
     }
 

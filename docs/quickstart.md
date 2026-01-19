@@ -207,8 +207,9 @@ await forked.send('这是分叉后的新任务，请从 snapshot 接着处理。
 
 ---
 
-完成上述步骤，你已经拥有一个“协作收件箱”级别的 Agent 服务。接下来可以继续阅读：
+完成上述步骤，你已经拥有一个"协作收件箱"级别的 Agent 服务。接下来可以继续阅读：
 
 - [`docs/playbooks.md`](./playbooks.md)：针对审批、团队协作、调度的进阶脚本。
 - [`docs/events.md`](./events.md)：三通道事件流的心智模型与最佳实践。
 - [`docs/tools.md`](./tools.md)：如何扩展自定义工具、接入 MCP。
+- [`docs/skills.md`](./skills.md)：Skills系统，支持模块化、可重用的能力单元。

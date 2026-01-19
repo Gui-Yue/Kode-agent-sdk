@@ -1,4 +1,5 @@
 import { Sandbox } from '../infra/sandbox';
+import { logger } from '../utils/logger';
 
 export interface FileRecord {
   path: string;
@@ -120,7 +121,7 @@ export class FilePool {
       this.watchers.set(path, id);
     } catch (err) {
       // 记录 watch 失败，但不中断流程
-      console.warn(`[FilePool] Failed to watch file: ${path}`, err);
+      logger.warn(`[FilePool] Failed to watch file: ${path}`, err);
     }
   }
 

@@ -16,3 +16,7 @@ export type { ToolInstance, ToolDescriptor, ToolFactory, ToolSource } from './re
 
 // 内置工具
 export * as builtin from './builtin';
+
+// Skills 工具
+export { createSkillsTool } from './skills';
+export { createScriptsTool } from './scripts';

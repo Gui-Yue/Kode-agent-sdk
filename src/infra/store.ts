@@ -1,5 +1,6 @@
 import { Message, Timeline, Snapshot, AgentInfo, ToolCallRecord, Bookmark, AgentChannel } from '../core/types';
 import { TodoSnapshot } from '../core/todo';
+import { logger } from '../utils/logger';
 
 // ============================================================================
 // Core Data Structures
@@ -304,7 +305,7 @@ export class JSONStore implements Store {
           await fsp.unlink(walPath).catch(() => undefined);
         }
       } catch (err) {
-        console.error(`Failed to recover ${name} from WAL:`, err);
+        logger.error(`Failed to recover ${name} from WAL:`, err);
       }
     }
 
@@ -326,7 +327,7 @@ export class JSONStore implements Store {
       .then(() => write())  // 前一个成功后执行
       .catch((err) => {
         // 即使前一个失败，也尝试当前写入
-        console.error(`[WAL] Previous write failed for ${key}, attempting current write:`, err);
+        logger.error(`[WAL] Previous write failed for ${key}, attempting current write:`, err);
         return write();
       });
 
@@ -336,7 +337,7 @@ export class JSONStore implements Store {
       await next;
     } catch (err) {
       // 记录但不阻塞调用者
-      console.error(`[WAL] Write failed for ${key}:`, err);
+      logger.error(`[WAL] Write failed for ${key}:`, err);
       throw err; // 重新抛出让调用者处理
     } finally {
       // 清理完成的 promise（避免内存泄漏）
@@ -374,10 +375,10 @@ export class JSONStore implements Store {
       }
 
       if (agentDirs.length > 0) {
-        console.log(`[Store] WAL recovery completed for ${agentDirs.length} agents`);
+        logger.log(`[Store] WAL recovery completed for ${agentDirs.length} agents`);
       }
     } catch (err) {
-      console.error('[Store] WAL recovery failed:', err);
+      logger.error('[Store] WAL recovery failed:', err);
     }
   }
 
@@ -404,10 +405,10 @@ export class JSONStore implements Store {
         await fsp.writeFile(tmp, JSON.stringify(walData.data, null, 2), 'utf-8');
         await fsp.rename(tmp, path);
         await fsp.unlink(walPath);
-        console.log(`[Store] Recovered ${name} from WAL for ${agentId}`);
+        logger.log(`[Store] Recovered ${name} from WAL for ${agentId}`);
       }
     } catch (err) {
-      console.error(`[Store] Failed to recover ${name} WAL for ${agentId}:`, err);
+      logger.error(`[Store] Failed to recover ${name} WAL for ${agentId}:`, err);
       // 重命名损坏的 WAL 以便人工检查
       await fsp.rename(walPath, `${walPath}.corrupted`).catch(() => {});
     }
@@ -434,10 +435,10 @@ export class JSONStore implements Store {
         const payload = lines.join('\n') + '\n';
         await fsp.appendFile(this.getEventsPath(agentId, `${channel}.log`), payload);
         await fsp.unlink(walPath);
-        console.log(`[Store] Recovered ${lines.length} events from ${channel} WAL for ${agentId}`);
+        logger.log(`[Store] Recovered ${lines.length} events from ${channel} WAL for ${agentId}`);
       }
     } catch (err) {
-      console.error(`[Store] Failed to recover ${channel} WAL for ${agentId}:`, err);
+      logger.error(`[Store] Failed to recover ${channel} WAL for ${agentId}:`, err);
       await fsp.rename(walPath, `${walPath}.corrupted`).catch(() => {});
     }
   }

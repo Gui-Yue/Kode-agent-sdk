@@ -48,6 +48,7 @@ import { ResumeError } from './errors';
 import { MessageQueue, SendOptions as QueueSendOptions } from './agent/message-queue';
 import { TodoManager } from './agent/todo-manager';
 import { ToolRunner } from './agent/tool-runner';
+import { logger } from '../utils/logger';
 
 const CONFIG_VERSION = 'v2.7.0';
 
@@ -61,6 +62,7 @@ export interface AgentDependencies {
   sandboxFactory: SandboxFactory;
   toolRegistry: ToolRegistry;
   modelFactory?: ModelFactory;
+  skillsManager?: import('./skills/manager').SkillsManager;
 }
 
 export type SendOptions = QueueSendOptions;
@@ -162,6 +164,8 @@ export class Agent {
   private readonly toolDescriptors: ToolDescriptor[] = [];
   private readonly toolDescriptorIndex = new Map<string, ToolDescriptor>();
 
+  private skillsManager?: import('./skills/manager').SkillsManager;
+
   private createdAt: string;
 
   private readonly pendingPermissions = new Map<string, PendingPermission>();
@@ -228,6 +232,9 @@ export class Agent {
     }
     this.todoConfig = runtime.todoConfig;
     this.permissions = new PermissionManager(this.permission, this.toolDescriptorIndex);
+
+    // 保存SkillsManager引用
+    this.skillsManager = deps.skillsManager;
     this.scheduler = new Scheduler({
       onTrigger: (info) => {
         this.events.emitMonitor({
@@ -367,6 +374,9 @@ export class Agent {
       this.todoManager.handleStartup();
     }
     await this.persistInfo();
+
+    // 注入skills元数据（异步，等待完成）
+    await this.injectSkillsMetadataIntoSystemPrompt();
   }
 
   async *chatStream(input: string, opts?: StreamOptions): AsyncIterable<AgentEventEnvelope<ProgressEvent>> {
@@ -1208,7 +1218,15 @@ export class Agent {
           'execution complete'
         );
         this.events.emitMonitor({ channel: 'monitor', type: 'tool_executed', call: this.snapshotToolRecord(record.id) });
-        return this.makeToolResult(toolUse.id, { ok: true, data: outcome.content });
+
+        // 修复双嵌套问题：检查 outcome.content 是否已经是 {ok, data} 结构
+        let resultData = outcome.content;
+        if (outcome.content && typeof outcome.content === 'object' && 'ok' in outcome.content && 'data' in outcome.content) {
+          // 如果工具返回的是 {ok: true, data: {...}} 结构，直接使用 data 部分
+          resultData = (outcome.content as any).data;
+        }
+
+        return this.makeToolResult(toolUse.id, { ok: true, data: resultData });
       } else {
         const errorContent = outcome.content as any;
         const errorMessage = errorContent?.error || 'Tool returned failure';
@@ -1810,6 +1828,82 @@ export class Agent {
       tools: prompts.map((p) => p.name),
       timestamp: Date.now(),
     });
+  }
+
+  /**
+   * 将skills元数据注入到系统提示中
+   * 参考openskills设计，使用<available_skills> XML格式
+   */
+  private async injectSkillsMetadataIntoSystemPrompt(): Promise<void> {
+    logger.log('[Agent] injectSkillsMetadataIntoSystemPrompt: 开始执行');
+
+    if (!this.skillsManager) {
+      logger.log('[Agent] injectSkillsMetadataIntoSystemPrompt: skillsManager未定义，跳过');
+      return;
+    }
+
+    try {
+      logger.log('[Agent] injectSkillsMetadataIntoSystemPrompt: 正在获取skills元数据...');
+      // 获取所有skills的元数据
+      const skills = await this.skillsManager.getSkillsMetadata();
+      logger.log(`[Agent] injectSkillsMetadataIntoSystemPrompt: 找到${skills.length}个skills`);
+
+      if (skills.length === 0) {
+        logger.log('[Agent] injectSkillsMetadataIntoSystemPrompt: skills列表为空，跳过');
+        return;
+      }
+
+      // 导入XML生成器
+      const { generateSkillsMetadataXml } = await import('./skills/xml-generator');
+
+      // 生成XML格式的skills元数据
+      const skillsXml = generateSkillsMetadataXml(skills);
+      logger.log(`[Agent] injectSkillsMetadataIntoSystemPrompt: 生成XML完成，长度=${skillsXml.length}`);
+
+      // 注入到模板的 systemPrompt
+      if (this.template.systemPrompt) {
+        this.template.systemPrompt += skillsXml;
+      } else {
+        this.template.systemPrompt = skillsXml;
+      }
+
+      // 发出 Monitor 事件
+      this.events.emitMonitor({
+        channel: 'monitor',
+        type: 'skills_metadata_updated',
+        skills: skills.map(s => s.name),
+        timestamp: Date.now(),
+      });
+
+      logger.log(`[Agent] ✓ Injected ${skills.length} skill(s) metadata into system prompt`);
+
+      // 输出完整的system prompt以便检查
+      logger.log(`[Agent] ========== Complete System Prompt ==========`);
+      logger.log(this.template.systemPrompt);
+      logger.log(`[Agent] ========== End of System Prompt ==========`);
+    } catch (error: any) {
+      logger.error('[Agent] Failed to inject skills metadata:', error?.message || error);
+      logger.error('[Agent] Error stack:', error?.stack);
+    }
+  }
+
+  /**
+   * 刷新skills元数据（运行时skills变更时调用）
+   * 由于支持热更新，可在执行过程中调用此方法
+   */
+  private async refreshSkillsMetadata(): Promise<void> {
+    if (!this.skillsManager) {
+      return;
+    }
+
+    // 移除旧的 <skills_system> 部分
+    const skillsSystemPattern = /<skills_system[\s\S]*?<\/skills_system>\s*/;
+    if (this.template.systemPrompt) {
+      this.template.systemPrompt = this.template.systemPrompt.replace(skillsSystemPattern, '');
+    }
+
+    // 重新注入
+    await this.injectSkillsMetadataIntoSystemPrompt();
   }
 
   private enqueueMessage(message: Message, kind: 'user' | 'reminder'): void {

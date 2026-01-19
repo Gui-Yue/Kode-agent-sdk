@@ -163,12 +163,33 @@ Monitor 事件默认只在必要时推送，避免 UI 噪音。
 ## 工具系统速览
 
 - 所有工具必须注册到 `ToolRegistry`，`Agent.create`/`resume` 会根据模板/配置实例化。
-- 内置工具分组：`builtin.fs()`、`builtin.bash()`、`builtin.todo()`、`builtin.task(templates)`。
+- 内置工具分组：`builtin.fs()`、`builtin.bash()`、`builtin.todo()`、`builtin.task(templates)`、`builtin.skills(skillsManager)`。
 - 推荐使用 `defineTool`/`defineTools` 或 `tool()/tools()`（Zod）封装，自动生成 JSON Schema 与自定义事件。
 - 工具执行上下文(`ToolContext`)包含 `agent`, `sandbox`, `store`, `signal`, `events` 等；请响应 `AbortSignal`。
 - 工具返回结构若带 `{ ok: false, error, recommendations }`，会自动生成结构化审计事件。
 
-更多细节见 [`docs/tools.md`](./tools.md) 与 [`docs/simplified-tools.md`](./simplified-tools.md)。
+### Skills 工具注册
+
+Skills工具需要先创建`SkillsManager`实例，然后注册到工具注册表：
+
+```typescript
+import { createSkillsTool } from '@kode/sdk';
+import { SkillsManager } from '@kode/sdk';
+
+// 创建Skills管理器
+const skillsManager = new SkillsManager('./skills', ['skill1', 'skill2']);
+
+// 注册Skills工具
+deps.toolRegistry.register('skills', () => createSkillsTool(skillsManager));
+```
+
+Skills系统特性：
+- **热重载**：Skills代码修改后自动重新加载
+- **元数据注入**：自动将技能描述注入到系统提示
+- **沙箱隔离**：每个技能有独立的文件系统空间
+- **白名单机制**：支持选择性加载特定技能
+
+更多细节见 [`docs/tools.md`](./tools.md)、[`docs/simplified-tools.md`](./simplified-tools.md) 与 [`docs/skills.md`](./skills.md)。
 
 ---
 

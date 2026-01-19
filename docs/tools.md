@@ -63,6 +63,60 @@ const agent = await Agent.create({
 - `task_run`：根据模板池派发子 Agent，支持 `subagent_type`、`context`、`model_name` 参数。
 - 模板可以通过 `runtime.subagents` 限制深度与可选模板。
 
+## Skills 工具
+
+- `skills`：加载特定技能的详细内容（包含指令、references、scripts、assets）。
+  - **参数**：
+    - `action`: 操作类型（目前仅支持 `load`）
+    - `skill_name`: 技能名称（当action=load时必需）
+  - **返回**：
+    ```typescript
+    {
+      ok: true,
+      data: {
+        name: string,           // 技能名称
+        description: string,    // 技能描述
+        content: string,        // SKILL.md 内容
+        base_dir: string,       // 技能基础目录
+        references: string[],   // 参考文档列表
+        scripts: string[],      // 可用脚本列表
+        assets: string[]        // 资源文件列表
+      }
+    }
+    ```
+
+### Skills 系统特性
+
+- **热重载 (Hot Reload)**：Skills代码修改后自动重新加载，无需重启Agent
+- **元数据注入**：自动将技能描述注入到系统提示，提升AI理解
+- **沙箱隔离**：每个技能有独立的文件系统空间
+- **白名单机制**：支持选择性加载特定技能
+- **中文友好**：支持中文名称和描述
+
+### 使用示例
+
+```typescript
+import { createSkillsTool } from '@kode/sdk';
+import { SkillsManager } from '@kode/sdk';
+
+// 创建Skills管理器
+const skillsManager = new SkillsManager('./skills');
+
+// 注册Skills工具
+const skillsTool = createSkillsTool(skillsManager);
+deps.toolRegistry.register('skills', () => skillsTool);
+```
+
+Agent使用示例：
+```
+用户: 我需要代码格式化帮助
+
+Agent: [调用 skills 工具，action=load, skill_name=code-formatter]
+已加载代码格式化技能，现在我可以帮你格式化代码了。
+```
+
+更多详情请参考 [`docs/skills.md`](./skills.md)。
+
 ## 工具注册与 resume 支持
 
 ```typescript

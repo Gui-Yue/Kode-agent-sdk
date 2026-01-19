@@ -24,6 +24,24 @@ export {
 } from './core/template';
 export { TodoService, TodoItem, TodoSnapshot } from './core/todo';
 export { TimeBridge } from './core/time-bridge';
+
+// Skills
+export { SkillsManager } from './core/skills';
+export type { SkillMetadata, SkillContent, SandboxConfig } from './core/skills';
+export {
+  SkillsManagementManager,
+  OperationQueue,
+  OperationType,
+  OperationStatus,
+  SandboxFileManager,
+} from './core/skills';
+export type {
+  SkillInfo,
+  SkillDetail,
+  SkillFileTree,
+  CreateSkillOptions,
+  ArchivedSkillInfo,
+} from './core/skills';
 export { BreakpointManager } from './core/agent/breakpoint-manager';
 export { PermissionManager } from './core/agent/permission-manager';
 export { MessageQueue } from './core/agent/message-queue';
@@ -87,6 +105,8 @@ export {
 export { tool, tools, ToolDefinition, EnhancedToolContext } from './tools/tool';
 export { getMCPTools, disconnectMCP, disconnectAllMCP, MCPConfig, MCPTransportType } from './tools/mcp';
 export { ToolKit, toolMethod } from './tools/toolkit';
+export { createSkillsTool } from './tools/skills';
+export { createScriptsTool } from './tools/scripts';
 export {
   inferFromExample,
   schema,

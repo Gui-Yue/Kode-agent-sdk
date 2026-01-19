@@ -1,5 +1,6 @@
 import { Agent, AgentConfig, AgentDependencies } from './agent';
 import { AgentStatus, SnapshotId } from './types';
+import { logger } from '../utils/logger';
 
 export interface AgentPoolOptions {
   dependencies: AgentDependencies;
@@ -95,7 +96,7 @@ export class AgentPool {
         const agent = await this.resume(agentId, config, opts);
         resumed.push(agent);
       } catch (error) {
-        console.error(`Failed to resume ${agentId}:`, error);
+        logger.error(`Failed to resume ${agentId}:`, error);
       }
     }
 

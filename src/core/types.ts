@@ -305,6 +305,14 @@ export interface MonitorToolManualUpdatedEvent {
   bookmark?: Bookmark;
 }
 
+export interface MonitorSkillsMetadataUpdatedEvent {
+  channel: 'monitor';
+  type: 'skills_metadata_updated';
+  skills: string[];
+  timestamp: number;
+  bookmark?: Bookmark;
+}
+
 export interface MonitorToolCustomEvent {
   channel: 'monitor';
   type: 'tool_custom_event';
@@ -330,6 +338,7 @@ export type MonitorEvent =
   | MonitorSchedulerTriggeredEvent
   | MonitorBreakpointChangedEvent
   | MonitorToolManualUpdatedEvent
+  | MonitorSkillsMetadataUpdatedEvent
   | MonitorToolCustomEvent;
 
 export type AgentEvent = ProgressEvent | ControlEvent | MonitorEvent;
