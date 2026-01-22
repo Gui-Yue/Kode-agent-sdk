@@ -75,7 +75,9 @@ export {
 } from './core/errors';
 
 // Infrastructure
-export { Store, JSONStore } from './infra/store';
+export { Store, JSONStore, createStore, createExtendedStore } from './infra/store';
+export { SqliteStore } from './infra/db/sqlite/sqlite-store';
+export { PostgresStore } from './infra/db/postgres/postgres-store';
 export { Sandbox, LocalSandbox, SandboxKind } from './infra/sandbox';
 export {
   ModelProvider,

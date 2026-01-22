@@ -18,6 +18,7 @@ test-cli.ts
 # Ignore all markdown files except README.md and files in doc/docs folders
 *.md
 !README.md
+!README.zh-CN.md
 !doc/**/*.md
 !docs/**/*.md
 !tests/**/*.md

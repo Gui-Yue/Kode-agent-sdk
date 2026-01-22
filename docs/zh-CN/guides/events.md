@@ -1,6 +1,6 @@
-# 事件驱动指南
+# 事件系统指南
 
-KODE SDK 的核心理念是“默认只推必要事件，其余一律走回调”。为此我们将交互拆成三条独立通道：
+KODE SDK 的核心理念是"默认只推必要事件，其余一律走回调"。为此我们将交互拆成三条独立通道：
 
 ```
 Progress  → 数据面（UI 渲染）
@@ -17,7 +17,7 @@ Monitor   → 治理面（审计/告警）
 Progress 负责所有对用户可见的数据流：文本增量、工具生命周期、最终完成信号。事件均按时间序列推送，可用 `cursor`/`bookmark` 做断点续播。
 
 | 事件 | 说明 |
-| --- | --- |
+|------|------|
 | `think_chunk_start / think_chunk / think_chunk_end` | 模型思考阶段（可通过模板 metadata 开启 `exposeThinking`）。|
 | `text_chunk_start / text_chunk / text_chunk_end` | 文本增量与最终分段。|
 | `tool:start / tool:error / tool:end` | 工具执行生命周期；`tool:end` 始终发送（即使失败）。|
@@ -47,7 +47,7 @@ for await (const envelope of agent.subscribe(['progress'], { since: lastBookmark
 - 使用 **SSE/WebSocket** 将 Progress 推送到前端。
 - 保存 `bookmark` / `cursor`，断线后以 `since` 续播。
 - UI 只负责展示；业务判断（审批、治理）放到 Control/Monitor 或 Hook。
-- 需要展示“思考过程”时开启 `exposeThinking`，否则保持默认关闭降低噪音。
+- 需要展示"思考过程"时开启 `exposeThinking`，否则保持默认关闭降低噪音。
 
 **常见陷阱**
 
@@ -58,10 +58,10 @@ for await (const envelope of agent.subscribe(['progress'], { since: lastBookmark
 
 ## Control：审批面
 
-Control 专门处理“需要人类决策”的瞬间。事件数量极少但重要，通常会被持久化到审批系统。
+Control 专门处理"需要人类决策"的瞬间。事件数量极少但重要，通常会被持久化到审批系统。
 
 | 事件 | 说明 |
-| --- | --- |
+|------|------|
 | `permission_required` | 工具执行需审批，包含 `call` 快照与 `respond(decision, opts?)` 回调。|
 | `permission_decided` | 审批结果广播，包含 `callId`、`decision`、`decidedBy`、`note`。|
 
@@ -88,7 +88,7 @@ agent.on('permission_required', async (event) => {
 **常见陷阱**
 
 - 忘记处理 `permission_required` 导致工具一直卡在 `AWAITING_APPROVAL`。
-- 审批回调抛错：`agent.decide` 只能调用一次，重复调用会报 “Permission not pending”。
+- 审批回调抛错：`agent.decide` 只能调用一次，重复调用会报 "Permission not pending"。
 
 ---
 
@@ -97,7 +97,7 @@ agent.on('permission_required', async (event) => {
 Monitor 面向平台治理、审计、告警。默认只在必要时推送，适合写入日志与指标系统。
 
 | 事件 | 说明 |
-| --- | --- |
+|------|------|
 | `state_changed` | Agent 状态切换（READY / WORKING / PAUSED）。|
 | `tool_executed` | 工具执行完成，含耗时、审批、审计信息。|
 | `error` | 分类错误（`phase: model/tool/system`），附详细上下文。|
@@ -148,12 +148,12 @@ agent.on('error', (event) => {
 const stream = agent.subscribe(['progress', 'monitor']);
 const iterator = stream[Symbol.asyncIterator]();
 
-// Back-end governance
+// 后台治理
 const off = agent.on('tool_executed', handler);
 // 在适当时机调用 off() 解除绑定
 ```
 
-> 默认约定：UI 订阅 Progress；审批系统监听 Control；治理/监控消费 Monitor。其余场景尽量通过 Hook 或内置事件完成，避免自定义轮询。
+> **默认约定**：UI 订阅 Progress；审批系统监听 Control；治理/监控消费 Monitor。其余场景尽量通过 Hook 或内置事件完成，避免自定义轮询。
 
 ---
 
@@ -163,4 +163,4 @@ const off = agent.on('tool_executed', handler);
 - 使用 `agent.status()` 查看 `lastSfpIndex`、`cursor`、`state`，定位卡顿问题。
 - 结合 `EventBus.getTimeline()`（内部 API）或 Store 事件日志进行回放。
 
-掌握三通道心智后，就能轻松构建“像同事一样协作”的 Agent 体验。
+掌握三通道心智后，就能轻松构建"像同事一样协作"的 Agent 体验。
