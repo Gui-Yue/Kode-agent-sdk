@@ -61,7 +61,7 @@ agent.on('tool:error', (event) => {
 });
 
 // 使用流
-for await (const envelope of agent.chatStream(input)) {
+for await (const envelope of agent.stream(input)) {
   if (envelope.event.type === 'tool:error') {
     showNotification({
       type: 'error',

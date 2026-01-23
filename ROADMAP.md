@@ -177,8 +177,7 @@ const pool = new DistributedPool({
 
 // Agent automatically migrates between workers
 const agent = await pool.acquire(agentId);
-await agent.send(message);
-await agent.complete();
+const result = await agent.complete(message);
 await pool.release(agentId);
 ```
 

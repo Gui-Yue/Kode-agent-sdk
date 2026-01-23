@@ -497,10 +497,10 @@ for await (const envelope of agent.subscribe(['progress'])) {
 }
 ```
 
-### 使用 `chatStream()` 异步迭代器
+### 使用 `stream()` 异步迭代器
 
 ```typescript
-for await (const envelope of agent.chatStream('Hello')) {
+for await (const envelope of agent.stream('Hello')) {
   const { event } = envelope;
 
   switch (event.type) {

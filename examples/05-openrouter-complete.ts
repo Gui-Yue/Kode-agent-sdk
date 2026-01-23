@@ -1,11 +1,15 @@
 import './shared/load-env';
 
-import { OpenRouterProvider, Message } from '../src';
+import { OpenAIProvider, Message } from '../src';
 
+/**
+ * OpenRouter uses an OpenAI-compatible API, so we use OpenAIProvider with
+ * the OpenRouter base URL (https://openrouter.ai/api/v1).
+ */
 async function main() {
   const apiKey = process.env.OPENROUTER_API_KEY;
   const modelId = process.env.OPENROUTER_MODEL_ID;
-  const baseUrl = process.env.OPENROUTER_BASE_URL;
+  const baseUrl = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1';
 
   if (!apiKey) {
     throw new Error('Missing OPENROUTER_API_KEY');
@@ -14,7 +18,8 @@ async function main() {
     throw new Error('Missing OPENROUTER_MODEL_ID (e.g. openai/gpt-4.1-mini, anthropic/claude-3.5-sonnet)');
   }
 
-  const provider = new OpenRouterProvider(apiKey, modelId, baseUrl);
+  // OpenRouter is OpenAI-compatible, use OpenAIProvider with custom baseUrl
+  const provider = new OpenAIProvider(apiKey, modelId, baseUrl);
 
   const messages: Message[] = [
     {

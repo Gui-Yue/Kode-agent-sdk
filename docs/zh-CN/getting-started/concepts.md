@@ -1,22 +1,64 @@
 # 核心概念
 
+## 什么是 KODE SDK？
+
+KODE SDK 是一个 **Agent 运行时内核** — 它管理 AI Agent 的完整生命周期，包括状态持久化、崩溃恢复和工具执行。
+
+可以把它类比为 **JavaScript 的 V8**，但是针对 AI Agent：
+
+```
++------------------+     +------------------+
+|       V8         |     |    KODE SDK      |
+|  JS 运行时       |     |  Agent 运行时    |
++------------------+     +------------------+
+        |                        |
+        v                        v
++------------------+     +------------------+
+|    Express.js    |     |   你的应用       |
+|  Web 框架        |     | (CLI/桌面/Web)   |
++------------------+     +------------------+
+```
+
+**KODE SDK 提供：**
+- Agent 生命周期管理（创建、运行、暂停、恢复、分叉）
+- 带崩溃恢复的状态持久化（WAL 保护）
+- 带权限治理的工具执行
+- 三通道事件系统用于可观测性
+
+**KODE SDK 不提供：**
+- HTTP 路由或 API 框架
+- 用户认证或授权
+- 多租户或资源隔离
+- 水平扩展（这部分由你来架构）
+
+> 深入了解架构，请参阅 [架构指南](../advanced/architecture.md)
+
+---
+
 ## Agent
 
 Agent 是管理与 LLM 模型对话的核心实体。
 
 ```typescript
-const agent = await Agent.create({
-  provider,           // 模型 Provider（Anthropic、OpenAI 等）
-  store,              // 持久化后端
-  systemPrompt,       // 系统指令
-  tools,              // 可用工具（可选）
+// 设置依赖
+const templates = new AgentTemplateRegistry();
+templates.register({
+  id: 'assistant',
+  systemPrompt: '你是一个乐于助人的助手。',
+  tools: ['fs_read', 'fs_write'],  // 可选：工具名称
 });
+
+// 创建 Agent
+const agent = await Agent.create(
+  { templateId: 'assistant' },
+  { store, templateRegistry: templates, toolRegistry: tools, sandboxFactory, modelFactory }
+);
 ```
 
 核心能力：
 - **发送消息**：`agent.send('...')` 或 `agent.send(contentBlocks)`
 - **订阅事件**：`agent.subscribe(['progress'])` 或 `agent.on('event_type', callback)`
-- **从断点恢复**：`Agent.resumeFromStore(agentId, deps)`
+- **从存储恢复**：`Agent.resume(agentId, config, deps)` 或 `Agent.resumeFromStore(agentId, deps)`
 - **分叉对话**：`agent.fork()`
 
 ## 三通道事件系统

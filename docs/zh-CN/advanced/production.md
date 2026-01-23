@@ -270,8 +270,187 @@ const sandbox = new LocalSandbox({
 
 ---
 
+## 部署模式
+
+### 决策树
+
+```
++------------------+
+|    决策树        |
++------------------+
+         |
+         v
++----------------------+
+| 单用户/本地机器？    |----是---> 模式 1: 单进程
++--------+-------------+
+         | 否
+         v
++----------------------+
+| < 100 并发用户？     |----是---> 模式 2: 单服务器
++--------+-------------+
+         | 否
+         v
++----------------------+
+| 可以运行长进程？     |----是---> 模式 3: Worker 微服务
++--------+-------------+
+         | 否
+         v
++----------------------+
+| 只能 Serverless？    |----是---> 模式 4: 混合架构
++--------+-------------+
+```
+
+### 模式 1: 单进程（CLI/桌面）
+
+**适用于：** CLI 工具、Electron 应用、VSCode 扩展
+
+```typescript
+import { Agent, AgentPool, JSONStore } from '@shareai-lab/kode-sdk';
+import * as path from 'path';
+import * as os from 'os';
+
+const store = new JSONStore(path.join(os.homedir(), '.my-agent'));
+const pool = new AgentPool({ dependencies: { store, ... } });
+
+// 恢复或创建
+const agent = pool.get('main') ?? await pool.create('main', { templateId: 'cli-assistant' });
+
+// 交互循环
+for await (const line of readline) {
+  await agent.send(line);
+  for await (const env of agent.subscribe(['progress'])) {
+    if (env.event.type === 'text_chunk') process.stdout.write(env.event.delta);
+    if (env.event.type === 'done') break;
+  }
+}
+```
+
+### 模式 2: 单服务器
+
+**适用于：** 内部工具、小型团队（<100 并发用户）
+
+```typescript
+import { Hono } from 'hono';
+import { AgentPool, SqliteStore } from '@shareai-lab/kode-sdk';
+
+const app = new Hono();
+const store = new SqliteStore('./agents.db', './data');
+const pool = new AgentPool({ dependencies: { store, ... }, maxAgents: 50 });
+
+app.post('/api/agents/:id/message', async (c) => {
+  const { id } = c.req.param();
+  const { message } = await c.req.json();
+
+  let agent = pool.get(id);
+  if (!agent) {
+    const exists = await store.exists(id);
+    agent = exists
+      ? await pool.resume(id, getConfig())
+      : await pool.create(id, getConfig());
+  }
+
+  return c.json(await agent.complete(message));
+});
+```
+
+### 模式 3: Worker 微服务
+
+**适用于：** 生产 SaaS、1000+ 并发用户
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        负载均衡器                               │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         │                   │                   │
+┌────────▼────────┐ ┌────────▼────────┐ ┌────────▼────────┐
+│   API 服务器 1  │ │   API 服务器 2  │ │   API 服务器 N  │
+│   (无状态)      │ │   (无状态)      │ │   (无状态)      │
+└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             │
+                    ┌────────▼────────┐
+                    │   任务队列      │
+                    │   (BullMQ)      │
+                    └────────┬────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         │                   │                   │
+┌────────▼────────┐ ┌────────▼────────┐ ┌────────▼────────┐
+│   Worker 1      │ │   Worker 2      │ │   Worker N      │
+│  AgentPool(50)  │ │  AgentPool(50)  │ │  AgentPool(50)  │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+```
+
+详细实现请参阅英文文档 [Production Deployment](../../en/advanced/production.md)。
+
+---
+
+## 扩展策略
+
+### 策略 1: 垂直扩展
+
+**适用于：** 每进程 ~100 个并发 Agent
+
+```typescript
+const pool = new AgentPool({
+  maxAgents: 100,  // 从默认 50 增加
+  store: new SqliteStore('./agents.db', './data'),
+});
+```
+
+### 策略 2: Agent 分片
+
+**适用于：** 100-1000 个并发 Agent
+
+使用一致性哈希将 Agent 路由到特定 Worker。
+
+### 策略 3: LRU 调度
+
+**适用于：** 1000+ 总 Agent，但同时活跃数量有限
+
+```typescript
+class AgentScheduler {
+  private active: LRUCache<string, Agent>;
+
+  async get(agentId: string): Promise<Agent> {
+    if (this.active.has(agentId)) {
+      return this.active.get(agentId)!;
+    }
+    // 从存储恢复
+    const agent = await Agent.resume(agentId, config, deps);
+    this.active.set(agentId, agent);  // LRU 淘汰处理休眠
+    return agent;
+  }
+}
+```
+
+---
+
+## 容量规划
+
+| 部署方式 | Agent/进程 | 内存/Agent | 并发用户 |
+|----------|------------|------------|----------|
+| CLI | 1 | 10-100 MB | 1 |
+| 桌面应用 | 5-10 | 50-200 MB | 1 |
+| 单服务器 | 50 | 2-10 MB | 50-100 |
+| Worker 集群 (10 节点) | 500 | 2-10 MB | 500-1000 |
+| Worker 集群 (50 节点) | 2500 | 2-10 MB | 2500-5000 |
+
+**每个 Agent 内存估算：**
+- 基础对象：~50 KB
+- 消息历史 (100 条消息)：~500 KB - 5 MB
+- 工具调用记录：~50-500 KB
+- 事件时间线：~100 KB - 1 MB
+- **典型总计：1-10 MB**
+
+---
+
 ## 参考资料
 
+- [架构指南](./architecture.md)
 - [数据库指南](../guides/database.md)
 - [错误处理](../guides/error-handling.md)
 - [事件指南](../guides/events.md)

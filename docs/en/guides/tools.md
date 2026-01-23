@@ -359,10 +359,11 @@ Default tool execution timeout is **60 seconds**, customizable via Agent config:
 
 ```typescript
 const agent = await Agent.create({
+  templateId: 'my-assistant',
   metadata: {
     toolTimeoutMs: 120000, // 2 minutes
   }
-});
+}, deps);
 ```
 
 ### Handling AbortSignal (Required)
@@ -504,16 +505,23 @@ A: Yes, custom events are persisted to WAL as `MonitorToolCustomEvent`, recovera
 
 **Q: Can I mix old and new APIs?**
 
-A: Yes, freely mix them - Agent accepts any `ToolInstance`:
+A: Yes, freely mix them - Register tools in ToolRegistry and reference by name:
 
 ```typescript
-const agent = await Agent.create({
-  tools: [
-    oldStyleTool,           // Legacy
-    defineTool({ ... }),    // New style
-    new FsRead(),           // Built-in
-  ]
+const tools = new ToolRegistry();
+
+// Register different styles
+tools.register('old_tool', () => oldStyleTool);
+tools.register('new_tool', () => defineTool({ name: 'new_tool', /* ... */ }));
+tools.register('fs_read', () => new FsRead());
+
+// Reference in template
+templates.register({
+  id: 'my-assistant',
+  tools: ['old_tool', 'new_tool', 'fs_read'],
 });
+
+const agent = await Agent.create({ templateId: 'my-assistant' }, deps);
 ```
 
 ---

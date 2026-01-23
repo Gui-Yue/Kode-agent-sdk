@@ -7,10 +7,25 @@ Build your first Agent in 5 minutes.
 - Completed [Installation](./installation.md)
 - Set `ANTHROPIC_API_KEY` environment variable
 
-## Step 1: Create an Agent
+## Step 1: Setup Dependencies
+
+KODE SDK uses a dependency injection pattern. First, create the required dependencies:
 
 ```typescript
-import { Agent, AnthropicProvider, JSONStore } from '@shareai-lab/kode-sdk';
+import {
+  Agent,
+  AnthropicProvider,
+  JSONStore,
+  AgentTemplateRegistry,
+  ToolRegistry,
+  SandboxFactory,
+} from '@shareai-lab/kode-sdk';
+
+// Create dependencies
+const store = new JSONStore('./.kode');
+const templates = new AgentTemplateRegistry();
+const tools = new ToolRegistry();
+const sandboxFactory = new SandboxFactory();
 
 // Create provider
 const provider = new AnthropicProvider(
@@ -18,15 +33,29 @@ const provider = new AnthropicProvider(
   process.env.ANTHROPIC_MODEL_ID  // optional, uses default if not set
 );
 
-// Create agent
-const agent = await Agent.create({
-  provider,
-  store: new JSONStore('./.kode'),
-  systemPrompt: 'You are a helpful assistant.'
+// Register a template
+templates.register({
+  id: 'assistant',
+  systemPrompt: 'You are a helpful assistant.',
 });
 ```
 
-## Step 2: Subscribe to Events
+## Step 2: Create an Agent
+
+```typescript
+const agent = await Agent.create(
+  { templateId: 'assistant' },
+  {
+    store,
+    templateRegistry: templates,
+    toolRegistry: tools,
+    sandboxFactory,
+    modelFactory: () => provider,
+  }
+);
+```
+
+## Step 3: Subscribe to Events
 
 ```typescript
 // Subscribe to progress events (text streaming) using subscribe()
@@ -50,7 +79,7 @@ agent.on('permission_required', async (event) => {
 });
 ```
 
-## Step 3: Send a Message
+## Step 4: Send a Message
 
 ```typescript
 await agent.send('Hello! What can you help me with?');
@@ -61,7 +90,14 @@ await agent.send('Hello! What can you help me with?');
 ```typescript
 // getting-started.ts
 import 'dotenv/config';
-import { Agent, AnthropicProvider, JSONStore, AgentTemplateRegistry, ToolRegistry, SandboxFactory } from '@shareai-lab/kode-sdk';
+import {
+  Agent,
+  AnthropicProvider,
+  JSONStore,
+  AgentTemplateRegistry,
+  ToolRegistry,
+  SandboxFactory,
+} from '@shareai-lab/kode-sdk';
 
 async function main() {
   const provider = new AnthropicProvider(
@@ -111,21 +147,48 @@ npx ts-node getting-started.ts
 
 ## Using Built-in Tools
 
-Add file system and bash tools:
+Add file system and bash tools by registering them:
 
 ```typescript
-import { Agent, AnthropicProvider, JSONStore, builtin } from '@shareai-lab/kode-sdk';
+import {
+  Agent,
+  AnthropicProvider,
+  JSONStore,
+  AgentTemplateRegistry,
+  ToolRegistry,
+  SandboxFactory,
+  builtin,
+} from '@shareai-lab/kode-sdk';
 
-const agent = await Agent.create({
-  provider,
-  store: new JSONStore('./.kode'),
+const store = new JSONStore('./.kode');
+const templates = new AgentTemplateRegistry();
+const tools = new ToolRegistry();
+const sandboxFactory = new SandboxFactory();
+
+// Register built-in tools
+for (const tool of builtin.fs()) {
+  tools.register(tool.name, () => tool);
+}
+for (const tool of builtin.bash()) {
+  tools.register(tool.name, () => tool);
+}
+for (const tool of builtin.todo()) {
+  tools.register(tool.name, () => tool);
+}
+
+// Register template with tool names
+templates.register({
+  id: 'coding-assistant',
   systemPrompt: 'You are a coding assistant.',
-  tools: [
-    ...builtin.fs(),    // fs_read, fs_write, fs_edit, fs_glob, fs_grep
-    ...builtin.bash(),  // bash_run, bash_logs, bash_kill
-    ...builtin.todo(),  // todo_read, todo_write
-  ]
+  tools: ['fs_read', 'fs_write', 'fs_edit', 'fs_glob', 'fs_grep', 'bash_run', 'todo_read', 'todo_write'],
 });
+
+const provider = new AnthropicProvider(process.env.ANTHROPIC_API_KEY!);
+
+const agent = await Agent.create(
+  { templateId: 'coding-assistant' },
+  { store, templateRegistry: templates, toolRegistry: tools, sandboxFactory, modelFactory: () => provider }
+);
 ```
 
 ## Next Steps

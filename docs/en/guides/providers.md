@@ -282,6 +282,7 @@ const agent = await Agent.create(
     templateRegistry,
     toolRegistry,
     sandboxFactory,
+    // Simple factory - ignores config, uses env vars
     modelFactory: () => new AnthropicProvider(
       process.env.ANTHROPIC_API_KEY!,
       process.env.ANTHROPIC_MODEL_ID ?? 'claude-sonnet-4-5-20250929'
@@ -290,35 +291,70 @@ const agent = await Agent.create(
 );
 ```
 
-### Dynamic Provider Selection
+### Using ModelConfig from Template
+
+The `modelFactory` receives a `ModelConfig` object that may include the model ID from the template:
 
 ```typescript
-function createProvider(providerName: string) {
-  switch (providerName) {
-    case 'anthropic':
-      return new AnthropicProvider(
-        process.env.ANTHROPIC_API_KEY!,
-        process.env.ANTHROPIC_MODEL_ID ?? 'claude-sonnet-4-5-20250929'
-      );
-    case 'openai':
-      return new OpenAIProvider(
-        process.env.OPENAI_API_KEY!,
-        process.env.OPENAI_MODEL_ID ?? 'gpt-5-2025-08-07'
-      );
-    case 'deepseek':
-      return new OpenAIProvider(
-        process.env.DEEPSEEK_API_KEY!,
-        'deepseek-chat',
-        'https://api.deepseek.com/v1'
-      );
-    case 'gemini':
-      return new GeminiProvider(
-        process.env.GOOGLE_API_KEY!,
-        process.env.GEMINI_MODEL_ID ?? 'gemini-3-flash'
-      );
-    default:
-      throw new Error(`Unknown provider: ${providerName}`);
-  }
+// Template with model specification
+templates.register({
+  id: 'gpt-assistant',
+  systemPrompt: 'You are a helpful assistant.',
+  model: 'gpt-4o',  // This is passed to modelFactory
+});
+
+// Factory that uses the config
+modelFactory: (config: ModelConfig) => {
+  const modelId = config.model ?? 'claude-sonnet-4-5-20250929';
+  return new AnthropicProvider(
+    process.env.ANTHROPIC_API_KEY!,
+    modelId
+  );
+}
+```
+
+### Multi-Provider Factory
+
+For applications supporting multiple providers, create a factory that selects based on config:
+
+```typescript
+function createModelFactory(): (config: ModelConfig) => ModelProvider {
+  return (config: ModelConfig) => {
+    // Use config.provider or infer from model name
+    const provider = config.provider ?? inferProvider(config.model);
+
+    switch (provider) {
+      case 'anthropic':
+        return new AnthropicProvider(
+          config.apiKey ?? process.env.ANTHROPIC_API_KEY!,
+          config.model ?? 'claude-sonnet-4-5-20250929',
+          config.baseUrl,
+          config.proxyUrl
+        );
+      case 'openai':
+        return new OpenAIProvider(
+          config.apiKey ?? process.env.OPENAI_API_KEY!,
+          config.model ?? 'gpt-4o',
+          config.baseUrl,
+          config.proxyUrl
+        );
+      case 'gemini':
+        return new GeminiProvider(
+          config.apiKey ?? process.env.GOOGLE_API_KEY!,
+          config.model ?? 'gemini-3-flash'
+        );
+      default:
+        throw new Error(`Unknown provider: ${provider}`);
+    }
+  };
+}
+
+function inferProvider(model?: string): string {
+  if (!model) return 'anthropic';
+  if (model.startsWith('claude')) return 'anthropic';
+  if (model.startsWith('gpt')) return 'openai';
+  if (model.startsWith('gemini')) return 'gemini';
+  return 'anthropic';
 }
 ```
 

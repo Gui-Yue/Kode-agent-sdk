@@ -1,22 +1,64 @@
 # Core Concepts
 
+## What is KODE SDK?
+
+KODE SDK is an **Agent Runtime Kernel** — it manages the complete lifecycle of AI agents including state persistence, crash recovery, and tool execution.
+
+Think of it like **V8 for JavaScript**, but for AI agents:
+
+```
++------------------+     +------------------+
+|       V8         |     |    KODE SDK      |
+|  JS Runtime      |     |  Agent Runtime   |
++------------------+     +------------------+
+        |                        |
+        v                        v
++------------------+     +------------------+
+|    Express.js    |     |   Your App       |
+|  Web Framework   |     | (CLI/Desktop/Web)|
++------------------+     +------------------+
+```
+
+**KODE SDK provides:**
+- Agent lifecycle management (create, run, pause, resume, fork)
+- State persistence with crash recovery (WAL-protected)
+- Tool execution with permission governance
+- Three-channel event system for observability
+
+**KODE SDK does NOT provide:**
+- HTTP routing or API framework
+- User authentication or authorization
+- Multi-tenancy or resource isolation
+- Horizontal scaling (you architect that layer)
+
+> For deep dive into architecture, see [Architecture Guide](../advanced/architecture.md)
+
+---
+
 ## Agent
 
 The central entity that manages conversations with LLM models.
 
 ```typescript
-const agent = await Agent.create({
-  provider,           // Model provider (Anthropic, OpenAI, etc.)
-  store,              // Persistence backend
-  systemPrompt,       // System instructions
-  tools,              // Available tools (optional)
+// Setup dependencies
+const templates = new AgentTemplateRegistry();
+templates.register({
+  id: 'assistant',
+  systemPrompt: 'You are a helpful assistant.',
+  tools: ['fs_read', 'fs_write'],  // Optional: tool names
 });
+
+// Create agent
+const agent = await Agent.create(
+  { templateId: 'assistant' },
+  { store, templateRegistry: templates, toolRegistry: tools, sandboxFactory, modelFactory }
+);
 ```
 
 Key capabilities:
 - **Send messages**: `agent.send('...')` or `agent.send(contentBlocks)`
 - **Subscribe to events**: `agent.subscribe(['progress'])` or `agent.on('event_type', callback)`
-- **Resume from checkpoint**: `Agent.resumeFromStore(agentId, deps)`
+- **Resume from store**: `Agent.resume(agentId, config, deps)` or `Agent.resumeFromStore(agentId, deps)`
 - **Fork conversation**: `agent.fork()`
 
 ## Three-Channel Event System
@@ -132,14 +174,17 @@ const store = createExtendedStore({
 Isolated execution environment for tools.
 
 ```typescript
-const agent = await Agent.create({
-  // ...
-  sandbox: {
-    kind: 'local',
-    workDir: './workspace',
-    enforceBoundary: true,  // Restrict file access to workDir
-  }
-});
+const agent = await Agent.create(
+  {
+    templateId: 'assistant',
+    sandbox: {
+      kind: 'local',
+      workDir: './workspace',
+      enforceBoundary: true,  // Restrict file access to workDir
+    }
+  },
+  deps
+);
 ```
 
 ## Provider

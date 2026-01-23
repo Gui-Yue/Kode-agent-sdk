@@ -240,10 +240,13 @@ agent.on('token_usage', (event) => {
 ```typescript
 // Permission configuration
 const agent = await Agent.create({
-  permission: {
-    mode: 'approval',
-    requireApprovalTools: ['bash_run', 'fs_write'],
-    allowTools: ['fs_read', 'fs_glob'],
+  templateId: 'secure-assistant',
+  overrides: {
+    permission: {
+      mode: 'approval',
+      requireApprovalTools: ['bash_run', 'fs_write'],
+      allowTools: ['fs_read', 'fs_glob'],
+    },
   },
 }, deps);
 
@@ -270,8 +273,430 @@ const sandbox = new LocalSandbox({
 
 ---
 
+## Deployment Patterns
+
+### Decision Tree
+
+```
++------------------+
+|  Decision Tree   |
++------------------+
+         |
+         v
++----------------------+
+| Single user/         |----YES---> Pattern 1: Single Process
+| local machine?       |
++--------+-------------+
+         | NO
+         v
++----------------------+
+| < 100 concurrent     |----YES---> Pattern 2: Single Server
+| users?               |
++--------+-------------+
+         | NO
+         v
++----------------------+
+| Can run long-running |----YES---> Pattern 3: Worker Microservice
+| processes?           |
++--------+-------------+
+         | NO
+         v
++----------------------+
+| Serverless only?     |----YES---> Pattern 4: Hybrid (API + Workers)
++--------+-------------+
+```
+
+### Pattern 1: Single Process (CLI/Desktop)
+
+**Best for:** CLI tools, Electron apps, VSCode extensions
+
+```
+┌─────────────────────────────┐
+│         Your App            │
+│  ┌───────────────────────┐  │
+│  │      KODE SDK         │  │
+│  │  ┌─────────────────┐  │  │
+│  │  │   AgentPool     │  │  │
+│  │  │   + JSONStore   │  │  │
+│  │  └────────┬────────┘  │  │
+│  └───────────┼───────────┘  │
+└──────────────┼──────────────┘
+               │
+        ┌──────▼──────┐
+        │ Local Files │
+        └─────────────┘
+```
+
+```typescript
+import { Agent, AgentPool, JSONStore } from '@shareai-lab/kode-sdk';
+import * as path from 'path';
+import * as os from 'os';
+
+const store = new JSONStore(path.join(os.homedir(), '.my-agent'));
+const pool = new AgentPool({ dependencies: { store, templateRegistry, sandboxFactory, toolRegistry } });
+
+// Resume or create
+const agent = pool.get('main') ?? await pool.create('main', { templateId: 'cli-assistant' });
+
+// Interactive loop
+for await (const line of readline) {
+  await agent.send(line);
+  for await (const env of agent.subscribe(['progress'])) {
+    if (env.event.type === 'text_chunk') process.stdout.write(env.event.delta);
+    if (env.event.type === 'done') break;
+  }
+}
+```
+
+### Pattern 2: Single Server
+
+**Best for:** Internal tools, small teams, prototypes (<100 concurrent users)
+
+```
+┌──────────────────────────────────────────┐
+│               Node.js Server             │
+│  ┌────────────────────────────────────┐  │
+│  │          Express/Hono              │  │
+│  │  /api/agents/:id/message (POST)    │  │
+│  │  /api/agents/:id/events  (SSE)     │  │
+│  └──────────────────┬─────────────────┘  │
+│                     │                    │
+│  ┌──────────────────▼─────────────────┐  │
+│  │          AgentPool (50)            │  │
+│  │   SqliteStore / PostgresStore      │  │
+│  └──────────────────┬─────────────────┘  │
+└─────────────────────┼────────────────────┘
+                      │
+               ┌──────▼──────┐
+               │  Database   │
+               └─────────────┘
+```
+
+```typescript
+import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
+import { AgentPool, SqliteStore } from '@shareai-lab/kode-sdk';
+
+const app = new Hono();
+const store = new SqliteStore('./agents.db', './data');
+const pool = new AgentPool({ dependencies: { store, ... }, maxAgents: 50 });
+
+app.post('/api/agents/:id/message', async (c) => {
+  const { id } = c.req.param();
+  const { message } = await c.req.json();
+
+  let agent = pool.get(id);
+  if (!agent) {
+    const exists = await store.exists(id);
+    agent = exists
+      ? await pool.resume(id, getConfig())
+      : await pool.create(id, getConfig());
+  }
+
+  const result = await agent.complete(message);
+  return c.json(result);
+});
+
+app.get('/api/agents/:id/events', async (c) => {
+  const { id } = c.req.param();
+  const agent = pool.get(id);
+  if (!agent) return c.json({ error: 'Agent not found' }, 404);
+
+  return streamSSE(c, async (stream) => {
+    for await (const env of agent.subscribe(['progress'])) {
+      await stream.writeSSE({ data: JSON.stringify(env.event) });
+      if (env.event.type === 'done') break;
+    }
+  });
+});
+```
+
+### Pattern 3: Worker Microservice
+
+**Best for:** Production SaaS, 1000+ concurrent users
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Load Balancer                            │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         │                   │                   │
+┌────────▼────────┐ ┌────────▼────────┐ ┌────────▼────────┐
+│   API Server 1  │ │   API Server 2  │ │   API Server N  │
+│   (Stateless)   │ │   (Stateless)   │ │   (Stateless)   │
+└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             │
+                    ┌────────▼────────┐
+                    │   Job Queue     │
+                    │   (BullMQ)      │
+                    └────────┬────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         │                   │                   │
+┌────────▼────────┐ ┌────────▼────────┐ ┌────────▼────────┐
+│   Worker 1      │ │   Worker 2      │ │   Worker N      │
+│  AgentPool(50)  │ │  AgentPool(50)  │ │  AgentPool(50)  │
+└────────┬────────┘ └────────┬────────┘ └────────┬────────┘
+         │                   │                   │
+         └───────────────────┼───────────────────┘
+                             │
+              ┌──────────────┼──────────────┐
+              │              │              │
+       ┌──────▼──────┐ ┌─────▼─────┐ ┌─────▼─────┐
+       │  PostgreSQL │ │   Redis   │ │    S3     │
+       │   (Store)   │ │  (Cache)  │ │  (Files)  │
+       └─────────────┘ └───────────┘ └───────────┘
+```
+
+**API Server (Stateless):**
+
+```typescript
+// api/routes/agent.ts
+import { Queue } from 'bullmq';
+
+const queue = new Queue('agent-tasks', { connection: redis });
+
+app.post('/api/agents/:id/message', async (c) => {
+  const { id } = c.req.param();
+  const { message } = await c.req.json();
+
+  const job = await queue.add('process-message', {
+    agentId: id,
+    message,
+    userId: c.get('userId'),
+  });
+
+  return c.json({ jobId: job.id, status: 'queued' });
+});
+
+app.get('/api/agents/:id/events', async (c) => {
+  const { id } = c.req.param();
+
+  return streamSSE(c, async (stream) => {
+    const sub = redis.duplicate();
+    await sub.subscribe(`agent:${id}:events`);
+
+    sub.on('message', (channel, message) => {
+      stream.writeSSE({ data: message });
+    });
+  });
+});
+```
+
+**Worker Process:**
+
+```typescript
+// worker/index.ts
+import { Worker } from 'bullmq';
+import { AgentPool, PostgresStore } from '@shareai-lab/kode-sdk';
+
+const store = new PostgresStore(pgConfig, './data');
+const pool = new AgentPool({ dependencies: { store, ... }, maxAgents: 50 });
+
+const worker = new Worker('agent-tasks', async (job) => {
+  const { agentId, message } = job.data;
+
+  // Acquire distributed lock
+  const release = await store.acquireAgentLock(agentId);
+
+  try {
+    let agent = pool.get(agentId);
+    if (!agent) {
+      const exists = await store.exists(agentId);
+      agent = exists
+        ? await pool.resume(agentId, getConfig(job.data))
+        : await pool.create(agentId, getConfig(job.data));
+    }
+
+    await agent.send(message);
+
+    // Stream events to Redis Pub/Sub
+    for await (const env of agent.subscribe(['progress'])) {
+      await redis.publish(`agent:${agentId}:events`, JSON.stringify(env.event));
+      if (env.event.type === 'done') break;
+    }
+  } finally {
+    await release();
+  }
+}, { connection: redis });
+
+// Periodic cleanup: hibernate idle agents
+setInterval(async () => {
+  for (const agentId of pool.list()) {
+    const agent = pool.get(agentId);
+    if (agent && agent.idleTime > 60_000) {
+      await agent.persistInfo();
+      pool.delete(agentId);
+    }
+  }
+}, 30_000);
+```
+
+### Pattern 4: Hybrid Serverless
+
+**Best for:** Serverless frontend + stateful backend
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Vercel / Cloudflare                       │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │  /api/chat       --> Validate, enqueue, return task ID │  │
+│  │  /api/status     --> Check task status from DB         │  │
+│  │  /api/stream     --> SSE from Redis Pub/Sub            │  │
+│  └──────────────────────────┬─────────────────────────────┘  │
+└─────────────────────────────┼────────────────────────────────┘
+                              │
+                     ┌────────▼────────┐
+                     │  Message Queue  │
+                     │  (Upstash Redis)│
+                     └────────┬────────┘
+                              │
+┌─────────────────────────────▼────────────────────────────────┐
+│                    Railway / Render / Fly.io                 │
+│  ┌────────────────────────────────────────────────────────┐  │
+│  │              Worker Pool (KODE SDK)                    │  │
+│  │              Long-running processes                    │  │
+│  └────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Serverless API (Vercel):**
+
+```typescript
+// app/api/agent/[id]/route.ts
+export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const { message } = await req.json();
+  const agentId = params.id;
+
+  // Enqueue for worker processing
+  await inngest.send('agent/process', { agentId, message });
+
+  return Response.json({ status: 'processing', agentId });
+}
+```
+
+**Inngest Worker Function:**
+
+```typescript
+// inngest/functions/agent-process.ts
+import { inngest } from '@/lib/inngest';
+import { Agent, PostgresStore } from '@shareai-lab/kode-sdk';
+
+export const agentProcess = inngest.createFunction(
+  { id: 'agent-process' },
+  { event: 'agent/process' },
+  async ({ event, step }) => {
+    const { agentId, message } = event.data;
+
+    const result = await step.run('process', async () => {
+      const store = new PostgresStore(pgConfig, '/tmp/data');
+      const deps = { store, templateRegistry, toolRegistry, sandboxFactory };
+      const exists = await store.exists(agentId);
+      const agent = exists
+        ? await Agent.resume(agentId, config, deps)
+        : await Agent.create({ ...config, agentId }, deps);
+
+      return agent.complete(message);
+    });
+
+    await step.run('notify', async () => {
+      await notifyUser(agentId, result);
+    });
+
+    return result;
+  }
+);
+```
+
+---
+
+## Scaling Strategies
+
+### Strategy 1: Vertical Scaling
+
+**Applicable:** Up to ~100 concurrent agents per process
+
+```typescript
+const pool = new AgentPool({
+  maxAgents: 100,  // Increase from default 50
+  store: new SqliteStore('./agents.db', './data'),
+});
+```
+
+Optimizations:
+- Increase `maxAgents` in AgentPool
+- Use SqliteStore/PostgresStore (faster than JSONStore)
+- Add memory (agents are memory-bound)
+- Use SSD for persistence
+
+### Strategy 2: Agent Sharding
+
+**Applicable:** 100-1000 concurrent agents
+
+```
+                    agentId: "user-123-agent-456"
+                              |
+                              v
+                    hash(agentId) % N = worker_index
+                              |
+              +---------------+---------------+
+              |               |               |
+         Worker 0        Worker 1        Worker 2
+        (agents 0-33)   (agents 34-66)  (agents 67-99)
+```
+
+Use consistent hashing to route agents to specific workers.
+
+### Strategy 3: LRU Scheduling
+
+**Applicable:** 1000+ total agents, limited active at once
+
+```typescript
+class AgentScheduler {
+  private active: LRUCache<string, Agent>;
+  private store: Store;
+
+  async get(agentId: string): Promise<Agent> {
+    if (this.active.has(agentId)) {
+      return this.active.get(agentId)!;
+    }
+
+    // Resume from storage
+    const agent = await Agent.resume(agentId, config, deps);
+    this.active.set(agentId, agent);  // LRU eviction handles hibernation
+
+    return agent;
+  }
+}
+```
+
+---
+
+## Capacity Planning
+
+| Deployment | Agents/Process | Memory/Agent | Concurrent Users |
+|------------|----------------|--------------|------------------|
+| CLI | 1 | 10-100 MB | 1 |
+| Desktop | 5-10 | 50-200 MB | 1 |
+| Single Server | 50 | 2-10 MB | 50-100 |
+| Worker Cluster (10 nodes) | 500 | 2-10 MB | 500-1000 |
+| Worker Cluster (50 nodes) | 2500 | 2-10 MB | 2500-5000 |
+
+**Memory Estimation per Agent:**
+- Base object: ~50 KB
+- Message history (100 messages): ~500 KB - 5 MB
+- Tool records: ~50-500 KB
+- Event timeline: ~100 KB - 1 MB
+- **Typical total: 1-10 MB**
+
+---
+
 ## References
 
+- [Architecture Guide](./architecture.md)
 - [Database Guide](../guides/database.md)
 - [Error Handling](../guides/error-handling.md)
 - [Events Guide](../guides/events.md)

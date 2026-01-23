@@ -688,4 +688,4 @@ const agentId = generateAgentId(); // 例如 'agt-abc123xyz'
 
 - [类型参考](./types.md)
 - [事件参考](./events-reference.md)
-- [使用指南](../guides/)
+- [使用指南](../guides/events.md)

@@ -19,6 +19,7 @@ test-cli.ts
 *.md
 !README.md
 !README.zh-CN.md
+!ROADMAP.md
 !doc/**/*.md
 !docs/**/*.md
 !tests/**/*.md

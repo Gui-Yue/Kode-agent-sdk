@@ -58,7 +58,7 @@ const agent = await Agent.resumeFromStore('agt-demo', deps, {
 | `autoRun` | `boolean` | Continue processing message queue after resume |
 | `overrides` | `Partial<AgentConfig>` | Override metadata (model upgrade, permission changes, etc.) |
 
-> **Important**: You **must** re-bindg event listeners after Resume (Control/Monitor callbacks are not auto-restored).
+> **Important**: You **must** re-bind event listeners after Resume (Control/Monitor callbacks are not auto-restored).
 
 ---
 

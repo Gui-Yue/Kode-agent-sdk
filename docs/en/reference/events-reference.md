@@ -497,10 +497,10 @@ for await (const envelope of agent.subscribe(['progress'])) {
 }
 ```
 
-### Using Async Iterator with `chatStream()`
+### Using Async Iterator with `stream()`
 
 ```typescript
-for await (const envelope of agent.chatStream('Hello')) {
+for await (const envelope of agent.stream('Hello')) {
   const { event } = envelope;
 
   switch (event.type) {

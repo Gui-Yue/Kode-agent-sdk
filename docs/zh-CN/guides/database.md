@@ -469,5 +469,4 @@ for (const session of sessions) {
 
 ## 参考资料
 
-- 示例代码：[`examples/db-sqlite.ts`](../../examples/db-sqlite.ts)、[`examples/db-postgres.ts`](../../examples/db-postgres.ts)
 - Store 接口：[API 参考](../reference/api.md#store)

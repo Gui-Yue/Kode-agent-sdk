@@ -5,22 +5,31 @@ import {
   AnthropicProvider,
   JSONStore,
   SandboxFactory,
-  TemplateRegistry,
+  AgentTemplateRegistry,
   ToolRegistry,
   builtin,
-} from 'kode-sdk';
+} from '../../src';
 
 async function runFsDemo() {
   const store = new JSONStore('./.kode');
-  const templates = new TemplateRegistry();
+  const templates = new AgentTemplateRegistry();
   const tools = new ToolRegistry();
   const sandboxFactory = new SandboxFactory();
 
-  builtin.registerAll(tools);
+  // Register builtin tools
+  for (const tool of builtin.fs()) {
+    tools.register(tool.name, () => tool);
+  }
+  for (const tool of builtin.bash()) {
+    tools.register(tool.name, () => tool);
+  }
+  for (const tool of builtin.todo()) {
+    tools.register(tool.name, () => tool);
+  }
 
   templates.register({
     id: 'fs-demo',
-    desc: 'Filesystem playground',
+    systemPrompt: 'Filesystem playground assistant',
     tools: ['fs_read', 'fs_write', 'fs_edit', 'fs_glob', 'fs_grep', 'fs_multi_edit'],
   });
 
@@ -42,7 +51,7 @@ async function runFsDemo() {
 
   await agent.send('请使用 fs_glob 列出 src/**/*.ts 再用 fs_grep 找到包含 TODO 的文件');
 
-  for await (const event of agent.chatStream('执行上述操作并总结结果')) {
+  for await (const event of agent.stream('执行上述操作并总结结果')) {
     if (event.event.type === 'text_chunk') {
       process.stdout.write(event.event.delta);
     }

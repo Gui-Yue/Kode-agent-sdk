@@ -359,10 +359,11 @@ interface MonitorToolCustomEvent {
 
 ```typescript
 const agent = await Agent.create({
+  templateId: 'my-assistant',
   metadata: {
     toolTimeoutMs: 120000, // 2 分钟
   }
-});
+}, deps);
 ```
 
 ### 处理 AbortSignal（必须）

@@ -469,5 +469,313 @@ for (const session of sessions) {
 
 ## References
 
-- Example code: [`examples/db-sqlite.ts`](../../examples/db-sqlite.ts), [`examples/db-postgres.ts`](../../examples/db-postgres.ts)
 - Store interface: [API Reference](../reference/api.md#store)
+
+---
+
+## Custom Store Implementation
+
+If you need a different database backend (MongoDB, DynamoDB, etc.), you can implement the `Store` interface.
+
+### Store Interface Overview
+
+The Store interface has three layers:
+
+```
+Store (base)
+  └── QueryableStore (adds query methods)
+        └── ExtendedStore (adds health check, metrics, distributed lock)
+```
+
+**Basic Store** (required methods):
+
+```typescript
+interface Store {
+  // Runtime State
+  saveMessages(agentId: string, messages: Message[]): Promise<void>;
+  loadMessages(agentId: string): Promise<Message[]>;
+  saveToolCallRecords(agentId: string, records: ToolCallRecord[]): Promise<void>;
+  loadToolCallRecords(agentId: string): Promise<ToolCallRecord[]>;
+  saveTodos(agentId: string, snapshot: TodoSnapshot): Promise<void>;
+  loadTodos(agentId: string): Promise<TodoSnapshot | undefined>;
+
+  // Events
+  appendEvent(agentId: string, timeline: Timeline): Promise<void>;
+  readEvents(agentId: string, opts?: { since?: Bookmark; channel?: AgentChannel }): AsyncIterable<Timeline>;
+
+  // History & Compression
+  saveHistoryWindow(agentId: string, window: HistoryWindow): Promise<void>;
+  loadHistoryWindows(agentId: string): Promise<HistoryWindow[]>;
+  saveCompressionRecord(agentId: string, record: CompressionRecord): Promise<void>;
+  loadCompressionRecords(agentId: string): Promise<CompressionRecord[]>;
+  saveRecoveredFile(agentId: string, file: RecoveredFile): Promise<void>;
+  loadRecoveredFiles(agentId: string): Promise<RecoveredFile[]>;
+
+  // Multimodal Cache
+  saveMediaCache(agentId: string, records: MediaCacheRecord[]): Promise<void>;
+  loadMediaCache(agentId: string): Promise<MediaCacheRecord[]>;
+
+  // Snapshots
+  saveSnapshot(agentId: string, snapshot: Snapshot): Promise<void>;
+  loadSnapshot(agentId: string, snapshotId: string): Promise<Snapshot | undefined>;
+  listSnapshots(agentId: string): Promise<Snapshot[]>;
+
+  // Metadata
+  saveInfo(agentId: string, info: AgentInfo): Promise<void>;
+  loadInfo(agentId: string): Promise<AgentInfo | undefined>;
+
+  // Lifecycle
+  exists(agentId: string): Promise<boolean>;
+  delete(agentId: string): Promise<void>;
+  list(prefix?: string): Promise<string[]>;
+}
+```
+
+### Minimal Custom Store Example
+
+```typescript
+import {
+  Store,
+  Message,
+  ToolCallRecord,
+  Timeline,
+  Snapshot,
+  AgentInfo,
+  TodoSnapshot,
+  HistoryWindow,
+  CompressionRecord,
+  RecoveredFile,
+  MediaCacheRecord,
+  Bookmark,
+  AgentChannel,
+} from '@shareai-lab/kode-sdk';
+import { MongoClient, Collection } from 'mongodb';
+
+export class MongoStore implements Store {
+  private db: Db;
+  private agents: Collection;
+  private messages: Collection;
+  private events: Collection;
+
+  constructor(private client: MongoClient, dbName: string) {
+    this.db = client.db(dbName);
+    this.agents = this.db.collection('agents');
+    this.messages = this.db.collection('messages');
+    this.events = this.db.collection('events');
+  }
+
+  // === Runtime State ===
+
+  async saveMessages(agentId: string, messages: Message[]): Promise<void> {
+    await this.messages.updateOne(
+      { agentId },
+      { $set: { agentId, messages, updatedAt: new Date() } },
+      { upsert: true }
+    );
+  }
+
+  async loadMessages(agentId: string): Promise<Message[]> {
+    const doc = await this.messages.findOne({ agentId });
+    return doc?.messages || [];
+  }
+
+  async saveToolCallRecords(agentId: string, records: ToolCallRecord[]): Promise<void> {
+    await this.db.collection('tool_calls').updateOne(
+      { agentId },
+      { $set: { agentId, records, updatedAt: new Date() } },
+      { upsert: true }
+    );
+  }
+
+  async loadToolCallRecords(agentId: string): Promise<ToolCallRecord[]> {
+    const doc = await this.db.collection('tool_calls').findOne({ agentId });
+    return doc?.records || [];
+  }
+
+  // === Events ===
+
+  async appendEvent(agentId: string, timeline: Timeline): Promise<void> {
+    await this.events.insertOne({
+      agentId,
+      cursor: timeline.cursor,
+      bookmark: timeline.bookmark,
+      event: timeline.event,
+      createdAt: new Date(),
+    });
+  }
+
+  async *readEvents(agentId: string, opts?: { since?: Bookmark; channel?: AgentChannel }): AsyncIterable<Timeline> {
+    const query: any = { agentId };
+    if (opts?.since) {
+      query['bookmark.seq'] = { $gt: opts.since.seq };
+    }
+    if (opts?.channel) {
+      query['event.channel'] = opts.channel;
+    }
+
+    const cursor = this.events.find(query).sort({ 'bookmark.seq': 1 });
+    for await (const doc of cursor) {
+      yield {
+        cursor: doc.cursor,
+        bookmark: doc.bookmark,
+        event: doc.event,
+      };
+    }
+  }
+
+  // === Metadata ===
+
+  async saveInfo(agentId: string, info: AgentInfo): Promise<void> {
+    await this.agents.updateOne(
+      { agentId },
+      { $set: { ...info, updatedAt: new Date() } },
+      { upsert: true }
+    );
+  }
+
+  async loadInfo(agentId: string): Promise<AgentInfo | undefined> {
+    const doc = await this.agents.findOne({ agentId });
+    if (!doc) return undefined;
+    return {
+      agentId: doc.agentId,
+      templateId: doc.templateId,
+      createdAt: doc.createdAt,
+      lineage: doc.lineage,
+      configVersion: doc.configVersion,
+      messageCount: doc.messageCount,
+      lastSfpIndex: doc.lastSfpIndex,
+      lastBookmark: doc.lastBookmark,
+      breakpoint: doc.breakpoint,
+      metadata: doc.metadata,
+    };
+  }
+
+  // === Lifecycle ===
+
+  async exists(agentId: string): Promise<boolean> {
+    const count = await this.agents.countDocuments({ agentId });
+    return count > 0;
+  }
+
+  async delete(agentId: string): Promise<void> {
+    await Promise.all([
+      this.agents.deleteOne({ agentId }),
+      this.messages.deleteOne({ agentId }),
+      this.events.deleteMany({ agentId }),
+      this.db.collection('tool_calls').deleteOne({ agentId }),
+      this.db.collection('snapshots').deleteMany({ agentId }),
+      // ... delete other collections
+    ]);
+  }
+
+  async list(prefix?: string): Promise<string[]> {
+    const query = prefix ? { agentId: { $regex: `^${prefix}` } } : {};
+    const docs = await this.agents.find(query, { projection: { agentId: 1 } }).toArray();
+    return docs.map(d => d.agentId);
+  }
+
+  // ... implement remaining methods (snapshots, history, compression, media cache, todos)
+}
+```
+
+### Hybrid Storage Pattern
+
+For high-performance scenarios, use a hybrid approach like `PostgresStore`:
+
+```
+┌─────────────────────────────────────────────────────┐
+│                   Your Custom Store                  │
+├─────────────────────────────────────────────────────┤
+│                                                      │
+│  Database (for queryable data):       File System:   │
+│  ┌─────────────────────────┐    ┌──────────────────┐│
+│  │ AgentInfo               │    │ Events (append)  ││
+│  │ Messages                │    │ Todos            ││
+│  │ ToolCallRecords         │    │ History Windows  ││
+│  │ Snapshots               │    │ Media Cache      ││
+│  └─────────────────────────┘    └──────────────────┘│
+│                                                      │
+└─────────────────────────────────────────────────────┘
+```
+
+**Why hybrid?**
+- Database: Supports queries, indexes, transactions
+- File System: Better for high-frequency append operations (events)
+
+```typescript
+export class HybridStore implements ExtendedStore {
+  private db: Database;           // Your database client
+  private fileStore: JSONStore;   // Delegate file operations
+
+  constructor(dbConfig: any, fileDir: string) {
+    this.db = new Database(dbConfig);
+    this.fileStore = new JSONStore(fileDir);
+  }
+
+  // Database operations
+  async saveMessages(agentId: string, messages: Message[]): Promise<void> {
+    await this.db.query('INSERT INTO messages ...');
+  }
+
+  // Delegate to JSONStore for events
+  async appendEvent(agentId: string, timeline: Timeline): Promise<void> {
+    return this.fileStore.appendEvent(agentId, timeline);
+  }
+
+  async *readEvents(agentId: string, opts?: any): AsyncIterable<Timeline> {
+    yield* this.fileStore.readEvents(agentId, opts);
+  }
+}
+```
+
+### Testing Your Store
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { MongoStore } from './mongo-store';
+
+describe('MongoStore', () => {
+  let store: MongoStore;
+
+  beforeAll(async () => {
+    const client = await MongoClient.connect('mongodb://localhost:27017');
+    store = new MongoStore(client, 'kode_test');
+  });
+
+  it('should save and load messages', async () => {
+    const agentId = 'test-agent-1';
+    const messages = [
+      { role: 'user', content: [{ type: 'text', text: 'Hello' }] },
+    ];
+
+    await store.saveMessages(agentId, messages);
+    const loaded = await store.loadMessages(agentId);
+
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].content[0].text).toBe('Hello');
+  });
+
+  it('should check existence', async () => {
+    const agentId = 'test-agent-2';
+    await store.saveInfo(agentId, { agentId, templateId: 'test', ... });
+
+    expect(await store.exists(agentId)).toBe(true);
+    expect(await store.exists('non-existent')).toBe(false);
+  });
+
+  // ... more tests for all Store methods
+});
+```
+
+### Best Practices
+
+1. **Implement all methods** - Store interface has no optional methods
+2. **Use transactions** - For operations that modify multiple tables
+3. **Index agentId** - All queries filter by agentId
+4. **Handle concurrent writes** - Use optimistic locking or upserts
+5. **Implement cleanup** - `delete()` must remove all agent data
+6. **Test edge cases** - Empty results, missing agents, large payloads
+
+---
+
+*See also: [Architecture Guide](../advanced/architecture.md) | [Production Guide](../advanced/production.md)*

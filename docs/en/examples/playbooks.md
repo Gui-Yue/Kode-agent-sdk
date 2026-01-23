@@ -186,3 +186,491 @@ const stats = await store.aggregateStats(agent.agentId);
 - [Events Guide](../guides/events.md)
 - [Multi-Agent Systems](../advanced/multi-agent.md)
 - [Database Guide](../guides/database.md)
+
+---
+
+## 7. CLI Agent Application
+
+Build command-line AI assistants like Claude Code or Cursor.
+
+### Minimal CLI Agent
+
+```typescript
+// cli-agent.ts
+import { Agent, AnthropicProvider, JSONStore, LocalSandbox } from '@shareai-lab/kode-sdk';
+import * as readline from 'readline';
+
+async function main() {
+  const store = new JSONStore('./.cli-agent');
+  const provider = new AnthropicProvider(process.env.ANTHROPIC_API_KEY!);
+  const sandbox = new LocalSandbox({ workDir: process.cwd() });
+
+  const agent = await Agent.create({
+    templateId: 'cli-assistant',
+    model: provider,
+    sandbox: { kind: 'local', workDir: process.cwd() },
+  }, {
+    store,
+    templateRegistry,
+    sandboxFactory,
+    toolRegistry,
+  });
+
+  // Stream output to terminal using subscribe
+  (async () => {
+    for await (const envelope of agent.subscribe(['progress'])) {
+      if (envelope.event.type === 'text_chunk') {
+        process.stdout.write(envelope.event.delta);
+      }
+      if (envelope.event.type === 'tool:start') {
+        console.log(`\n[Running: ${envelope.event.call.name}]`);
+      }
+      if (envelope.event.type === 'done') {
+        break;
+      }
+    }
+  })();
+
+  // Interactive loop
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  console.log('CLI Agent ready. Type your message (Ctrl+C to exit)\n');
+
+  const askQuestion = () => {
+    rl.question('You: ', async (input) => {
+      if (input.trim()) {
+        console.log('\nAssistant: ');
+        await agent.complete(input);  // complete() handles send + wait
+        console.log('\n');
+      }
+      askQuestion();
+    });
+  };
+
+  askQuestion();
+}
+
+main().catch(console.error);
+```
+
+### Production CLI with Session Management
+
+```typescript
+// production-cli.ts
+import { Agent, AgentPool, JSONStore } from '@shareai-lab/kode-sdk';
+import * as path from 'path';
+import * as os from 'os';
+import * as readline from 'readline';
+import { program } from 'commander';
+
+const DATA_DIR = path.join(os.homedir(), '.my-cli-agent');
+const store = new JSONStore(DATA_DIR);
+
+async function createDependencies() {
+  return {
+    store,
+    templateRegistry: /* ... */,
+    sandboxFactory: /* ... */,
+    toolRegistry: /* ... */,
+  };
+}
+
+async function main() {
+  program
+    .option('-s, --session <id>', 'Session ID to resume', 'default')
+    .option('-n, --new', 'Start new session (ignore existing)')
+    .option('-l, --list', 'List all sessions')
+    .parse();
+
+  const opts = program.opts();
+  const deps = await createDependencies();
+
+  // List sessions
+  if (opts.list) {
+    const sessions = await store.list();
+    console.log('Available sessions:');
+    sessions.forEach(s => console.log(`  - ${s}`));
+    return;
+  }
+
+  const pool = new AgentPool({ dependencies: deps, maxAgents: 5 });
+  const sessionId = opts.session;
+
+  // Resume or create agent
+  let agent: Agent;
+  const exists = await store.exists(sessionId);
+
+  if (exists && !opts.new) {
+    console.log(`Resuming session: ${sessionId}`);
+    agent = await pool.resume(sessionId, { templateId: 'cli-assistant' });
+  } else {
+    console.log(`Starting new session: ${sessionId}`);
+    agent = await pool.create(sessionId, { templateId: 'cli-assistant' });
+  }
+
+  // Event handlers
+  for await (const envelope of agent.subscribe(['progress'])) {
+    switch (envelope.event.type) {
+      case 'text_chunk':
+        process.stdout.write(envelope.event.delta);
+        break;
+      case 'tool:start':
+        console.log(`\n[Tool: ${envelope.event.call.name}]`);
+        break;
+      case 'done':
+        console.log('\n');
+        break;
+    }
+  }
+
+  // Interactive loop with special commands
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+  const processInput = async (input: string) => {
+    const trimmed = input.trim();
+
+    // Special commands
+    if (trimmed === '/exit' || trimmed === '/quit') {
+      console.log('Goodbye!');
+      process.exit(0);
+    }
+    if (trimmed === '/clear') {
+      // Fork to create fresh context
+      const snapshot = await agent.snapshot('clear-point');
+      agent = await agent.fork(snapshot);  // snapshot is already a SnapshotId
+      console.log('Context cleared.');
+      return;
+    }
+    if (trimmed === '/status') {
+      const status = agent.status();
+      console.log(`Session: ${status.agentId}`);
+      console.log(`Steps: ${status.stepCount}`);
+      console.log(`State: ${status.state}`);
+      return;
+    }
+
+    // Normal message
+    if (trimmed) {
+      console.log('\nAssistant: ');
+      await agent.complete(trimmed);
+    }
+  };
+
+  console.log('Ready. Commands: /exit, /clear, /status\n');
+
+  rl.on('line', async (line) => {
+    await processInput(line);
+    rl.prompt();
+  });
+
+  rl.prompt();
+}
+
+main().catch(console.error);
+```
+
+---
+
+## 8. Desktop App (Electron)
+
+Build desktop AI applications with Electron or Tauri.
+
+### Architecture Overview
+
+```
+┌────────────────────────────────────────────┐
+│              Electron App                  │
+│  ┌──────────────────────────────────────┐  │
+│  │           Renderer Process           │  │
+│  │  ┌──────────────────────────────┐    │  │
+│  │  │         React UI             │    │  │
+│  │  │  - Chat interface            │    │  │
+│  │  │  - Tool output display       │    │  │
+│  │  │  - Settings panel            │    │  │
+│  │  └──────────────┬───────────────┘    │  │
+│  └─────────────────┼────────────────────┘  │
+│                    │ IPC                    │
+│  ┌─────────────────▼────────────────────┐  │
+│  │            Main Process              │  │
+│  │  ┌──────────────────────────────┐    │  │
+│  │  │         AgentPool            │    │  │
+│  │  │  - Agent lifecycle           │    │  │
+│  │  │  - Event distribution        │    │  │
+│  │  │  - Store management          │    │  │
+│  │  └──────────────────────────────┘    │  │
+│  │  ┌──────────────────────────────┐    │  │
+│  │  │         JSONStore            │    │  │
+│  │  └──────────────┬───────────────┘    │  │
+│  └─────────────────┼────────────────────┘  │
+└────────────────────┼────────────────────────┘
+                     │
+              ┌──────▼──────┐
+              │  userData   │
+              │   folder    │
+              └─────────────┘
+```
+
+### Main Process Setup
+
+```typescript
+// main.ts
+import { app, ipcMain, BrowserWindow } from 'electron';
+import { AgentPool, JSONStore, Agent } from '@shareai-lab/kode-sdk';
+import * as path from 'path';
+
+let mainWindow: BrowserWindow;
+let pool: AgentPool;
+let store: JSONStore;
+
+async function initializeAgent() {
+  store = new JSONStore(path.join(app.getPath('userData'), 'agents'));
+
+  pool = new AgentPool({
+    dependencies: {
+      store,
+      templateRegistry: /* ... */,
+      sandboxFactory: /* ... */,
+      toolRegistry: /* ... */,
+    },
+    maxAgents: 10,
+  });
+}
+
+// IPC: Send message to agent
+ipcMain.handle('agent:send', async (event, { agentId, message }) => {
+  let agent = pool.get(agentId);
+
+  if (!agent) {
+    const exists = await store.exists(agentId);
+    agent = exists
+      ? await pool.resume(agentId, { templateId: 'desktop-assistant' })
+      : await pool.create(agentId, { templateId: 'desktop-assistant' });
+  }
+
+  return agent.complete(message);  // complete() handles send + wait
+});
+
+// IPC: Subscribe to events (streaming)
+ipcMain.on('agent:subscribe', (event, { agentId }) => {
+  const agent = pool.get(agentId);
+  if (!agent) return;
+
+  // Stream events to renderer
+  (async () => {
+    for await (const env of agent.subscribe(['progress'])) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(`agent:event:${agentId}`, env.event);
+      }
+      if (env.event.type === 'done') break;
+    }
+  })();
+});
+
+// IPC: Create new agent
+ipcMain.handle('agent:create', async (event, { agentId, templateId }) => {
+  const agent = await pool.create(agentId, { templateId });
+  return { agentId: agent.agentId, status: 'created' };
+});
+
+// IPC: List agents
+ipcMain.handle('agent:list', async () => {
+  return store.list();
+});
+
+// IPC: Delete agent
+ipcMain.handle('agent:delete', async (event, { agentId }) => {
+  await pool.delete(agentId);  // pool.delete also removes from store
+  return { success: true };
+});
+
+// IPC: Handle permission requests
+ipcMain.on('agent:permission-subscribe', (event, { agentId }) => {
+  const agent = pool.get(agentId);
+  if (!agent) return;
+
+  agent.on('permission_required', async (permEvent) => {
+    mainWindow.webContents.send(`agent:permission:${agentId}`, {
+      callId: permEvent.call.id,
+      toolName: permEvent.call.name,
+      input: permEvent.call.inputPreview,
+    });
+  });
+});
+
+ipcMain.handle('agent:permission-respond', async (event, { agentId, callId, decision, note }) => {
+  const agent = pool.get(agentId);
+  if (!agent) return { error: 'Agent not found' };
+
+  await agent.decide(callId, decision, note);
+  return { success: true };
+});
+
+app.whenReady().then(async () => {
+  await initializeAgent();
+
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+    },
+  });
+
+  mainWindow.loadFile('index.html');
+});
+
+// Graceful shutdown
+app.on('before-quit', async () => {
+  for (const agentId of pool.list()) {
+    const agent = pool.get(agentId);
+    if (agent) await agent.interrupt();
+  }
+});
+```
+
+### Preload Script
+
+```typescript
+// preload.ts
+import { contextBridge, ipcRenderer } from 'electron';
+
+contextBridge.exposeInMainWorld('agent', {
+  send: (agentId: string, message: string) =>
+    ipcRenderer.invoke('agent:send', { agentId, message }),
+
+  create: (agentId: string, templateId: string) =>
+    ipcRenderer.invoke('agent:create', { agentId, templateId }),
+
+  list: () => ipcRenderer.invoke('agent:list'),
+
+  delete: (agentId: string) =>
+    ipcRenderer.invoke('agent:delete', { agentId }),
+
+  subscribe: (agentId: string, callback: (event: any) => void) => {
+    ipcRenderer.send('agent:subscribe', { agentId });
+    ipcRenderer.on(`agent:event:${agentId}`, (_, event) => callback(event));
+  },
+
+  subscribePermission: (agentId: string, callback: (req: any) => void) => {
+    ipcRenderer.send('agent:permission-subscribe', { agentId });
+    ipcRenderer.on(`agent:permission:${agentId}`, (_, req) => callback(req));
+  },
+
+  respondPermission: (agentId: string, callId: string, decision: 'allow' | 'deny', note?: string) =>
+    ipcRenderer.invoke('agent:permission-respond', { agentId, callId, decision, note }),
+});
+```
+
+### Renderer (React)
+
+```tsx
+// App.tsx
+import React, { useState, useEffect, useRef } from 'react';
+
+declare global {
+  interface Window {
+    agent: {
+      send: (agentId: string, message: string) => Promise<any>;
+      create: (agentId: string, templateId: string) => Promise<any>;
+      list: () => Promise<string[]>;
+      subscribe: (agentId: string, callback: (event: any) => void) => void;
+      subscribePermission: (agentId: string, callback: (req: any) => void) => void;
+      respondPermission: (agentId: string, callId: string, decision: 'allow' | 'deny', note?: string) => Promise<any>;
+    };
+  }
+}
+
+function App() {
+  const [agentId] = useState('main-agent');
+  const [messages, setMessages] = useState<{ role: string; content: string }[]>([]);
+  const [input, setInput] = useState('');
+  const [streaming, setStreaming] = useState('');
+  const [pendingApproval, setPendingApproval] = useState<any>(null);
+
+  useEffect(() => {
+    // Subscribe to agent events
+    window.agent.subscribe(agentId, (event) => {
+      switch (event.type) {
+        case 'text_chunk':
+          setStreaming(prev => prev + event.delta);
+          break;
+        case 'done':
+          setMessages(prev => [...prev, { role: 'assistant', content: streaming }]);
+          setStreaming('');
+          break;
+      }
+    });
+
+    // Subscribe to permission requests
+    window.agent.subscribePermission(agentId, (req) => {
+      setPendingApproval(req);
+    });
+  }, [agentId]);
+
+  const handleSend = async () => {
+    if (!input.trim()) return;
+
+    setMessages(prev => [...prev, { role: 'user', content: input }]);
+    setInput('');
+
+    await window.agent.send(agentId, input);
+  };
+
+  const handleApproval = async (decision: 'allow' | 'deny') => {
+    if (!pendingApproval) return;
+    await window.agent.respondPermission(agentId, pendingApproval.callId, decision);
+    setPendingApproval(null);
+  };
+
+  return (
+    <div className="app">
+      <div className="messages">
+        {messages.map((msg, i) => (
+          <div key={i} className={`message ${msg.role}`}>
+            {msg.content}
+          </div>
+        ))}
+        {streaming && <div className="message assistant streaming">{streaming}</div>}
+      </div>
+
+      {pendingApproval && (
+        <div className="approval-dialog">
+          <p>Tool requires approval: {pendingApproval.toolName}</p>
+          <pre>{JSON.stringify(pendingApproval.input, null, 2)}</pre>
+          <button onClick={() => handleApproval('allow')}>Allow</button>
+          <button onClick={() => handleApproval('deny')}>Deny</button>
+        </div>
+      )}
+
+      <div className="input-area">
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          placeholder="Type a message..."
+        />
+        <button onClick={handleSend}>Send</button>
+      </div>
+    </div>
+  );
+}
+
+export default App;
+```
+
+### Best Practices for Desktop Apps
+
+1. **Run KODE SDK in Main Process** - Renderer should only handle UI
+2. **Use IPC for Communication** - Never expose Node.js APIs directly to renderer
+3. **Graceful Shutdown** - Interrupt agents before app quit
+4. **Store in userData** - Use `app.getPath('userData')` for persistence
+5. **Stream Events** - Don't batch events, stream them for responsive UI
+6. **Handle Permissions** - Show approval dialogs for sensitive tools
+
+---
+
+*See also: [Production Deployment](../advanced/production.md) | [Architecture Guide](../advanced/architecture.md)*

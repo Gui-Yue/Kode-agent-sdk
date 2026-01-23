@@ -7,10 +7,25 @@
 - 完成 [安装配置](./installation.md)
 - 设置 `ANTHROPIC_API_KEY` 环境变量
 
-## 第一步：创建 Agent
+## 第一步：设置依赖
+
+KODE SDK 使用依赖注入模式。首先创建所需的依赖：
 
 ```typescript
-import { Agent, AnthropicProvider, JSONStore } from '@shareai-lab/kode-sdk';
+import {
+  Agent,
+  AnthropicProvider,
+  JSONStore,
+  AgentTemplateRegistry,
+  ToolRegistry,
+  SandboxFactory,
+} from '@shareai-lab/kode-sdk';
+
+// 创建依赖
+const store = new JSONStore('./.kode');
+const templates = new AgentTemplateRegistry();
+const tools = new ToolRegistry();
+const sandboxFactory = new SandboxFactory();
 
 // 创建 Provider
 const provider = new AnthropicProvider(
@@ -18,15 +33,29 @@ const provider = new AnthropicProvider(
   process.env.ANTHROPIC_MODEL_ID  // 可选，不设置则使用默认值
 );
 
-// 创建 Agent
-const agent = await Agent.create({
-  provider,
-  store: new JSONStore('./.kode'),
-  systemPrompt: '你是一个乐于助人的助手。'
+// 注册模板
+templates.register({
+  id: 'assistant',
+  systemPrompt: '你是一个乐于助人的助手。',
 });
 ```
 
-## 第二步：订阅事件
+## 第二步：创建 Agent
+
+```typescript
+const agent = await Agent.create(
+  { templateId: 'assistant' },
+  {
+    store,
+    templateRegistry: templates,
+    toolRegistry: tools,
+    sandboxFactory,
+    modelFactory: () => provider,
+  }
+);
+```
+
+## 第三步：订阅事件
 
 ```typescript
 // 使用 subscribe() 订阅 Progress 事件（文本流）
@@ -50,7 +79,7 @@ agent.on('permission_required', async (event) => {
 });
 ```
 
-## 第三步：发送消息
+## 第四步：发送消息
 
 ```typescript
 await agent.send('你好！有什么可以帮助你的？');
@@ -61,7 +90,14 @@ await agent.send('你好！有什么可以帮助你的？');
 ```typescript
 // getting-started.ts
 import 'dotenv/config';
-import { Agent, AnthropicProvider, JSONStore, AgentTemplateRegistry, ToolRegistry, SandboxFactory } from '@shareai-lab/kode-sdk';
+import {
+  Agent,
+  AnthropicProvider,
+  JSONStore,
+  AgentTemplateRegistry,
+  ToolRegistry,
+  SandboxFactory,
+} from '@shareai-lab/kode-sdk';
 
 async function main() {
   const provider = new AnthropicProvider(
@@ -111,21 +147,48 @@ npx ts-node getting-started.ts
 
 ## 使用内置工具
 
-添加文件系统和 Bash 工具：
+通过注册的方式添加文件系统和 Bash 工具：
 
 ```typescript
-import { Agent, AnthropicProvider, JSONStore, builtin } from '@shareai-lab/kode-sdk';
+import {
+  Agent,
+  AnthropicProvider,
+  JSONStore,
+  AgentTemplateRegistry,
+  ToolRegistry,
+  SandboxFactory,
+  builtin,
+} from '@shareai-lab/kode-sdk';
 
-const agent = await Agent.create({
-  provider,
-  store: new JSONStore('./.kode'),
+const store = new JSONStore('./.kode');
+const templates = new AgentTemplateRegistry();
+const tools = new ToolRegistry();
+const sandboxFactory = new SandboxFactory();
+
+// 注册内置工具
+for (const tool of builtin.fs()) {
+  tools.register(tool.name, () => tool);
+}
+for (const tool of builtin.bash()) {
+  tools.register(tool.name, () => tool);
+}
+for (const tool of builtin.todo()) {
+  tools.register(tool.name, () => tool);
+}
+
+// 注册模板并指定工具名称
+templates.register({
+  id: 'coding-assistant',
   systemPrompt: '你是一个编程助手。',
-  tools: [
-    ...builtin.fs(),    // fs_read, fs_write, fs_edit, fs_glob, fs_grep
-    ...builtin.bash(),  // bash_run, bash_logs, bash_kill
-    ...builtin.todo(),  // todo_read, todo_write
-  ]
+  tools: ['fs_read', 'fs_write', 'fs_edit', 'fs_glob', 'fs_grep', 'bash_run', 'todo_read', 'todo_write'],
 });
+
+const provider = new AnthropicProvider(process.env.ANTHROPIC_API_KEY!);
+
+const agent = await Agent.create(
+  { templateId: 'coding-assistant' },
+  { store, templateRegistry: templates, toolRegistry: tools, sandboxFactory, modelFactory: () => provider }
+);
 ```
 
 ## 下一步

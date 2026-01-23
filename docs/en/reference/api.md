@@ -688,4 +688,4 @@ const agentId = generateAgentId(); // e.g., 'agt-abc123xyz'
 
 - [Types Reference](./types.md)
 - [Events Reference](./events-reference.md)
-- [Guides](../guides/)
+- [Guides](../guides/events.md)
