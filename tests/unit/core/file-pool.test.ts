@@ -27,6 +27,7 @@ runner
     const firstCheck = await pool.validateWrite('note.txt');
     expect.toEqual(firstCheck.isFresh, true);
 
+    await new Promise(r => setTimeout(r, 50)); // 确保 mtime 变化
     fs.writeFileSync(filePath, 'updated');
     const freshness = await pool.validateWrite('note.txt');
     expect.toEqual(freshness.isFresh, false);

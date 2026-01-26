@@ -289,6 +289,7 @@ runner
     expect.toEqual(todosBefore.length, 1);
     expect.toEqual(todosBefore[0].status, 'in_progress');
 
+    await new Promise(r => setTimeout(r, 50)); // 等待 store 持久化
     const resumed = await Agent.resume(
       agent.agentId,
       { ...config, overrides: { hooks: templateHooks } },

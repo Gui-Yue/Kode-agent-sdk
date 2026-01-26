@@ -182,6 +182,7 @@ runner
     await env.agent.chat(multimodalBlocks);
     expect.toEqual(logs.uploads.length, 1);
 
+    await new Promise(r => setTimeout(r, 50)); // 等待 store 持久化
     const resumed = await Agent.resume(env.agent.agentId, { templateId: env.config.templateId }, env.deps);
     await resumed.chat(multimodalBlocks);
     expect.toEqual(logs.uploads.length, 1);
