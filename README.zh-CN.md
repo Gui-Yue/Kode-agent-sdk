@@ -10,6 +10,7 @@
 - **长时运行与恢复** - 七段断点机制，支持 Safe-Fork-Point 崩溃恢复
 - **多 Agent 协作** - AgentPool、Room 消息、任务委派
 - **企业级持久化** - 支持 SQLite/PostgreSQL，统一 WAL 日志
+- **云端沙箱** - 集成 [E2B](https://e2b.dev)，提供隔离的远程代码执行环境
 - **可扩展生态** - MCP 工具、自定义 Provider、Skills 系统
 
 ## 快速开始

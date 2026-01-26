@@ -477,6 +477,45 @@ interface ReminderOptions {
 
 ---
 
+## E2B Types
+
+### E2BSandboxOptions
+
+```typescript
+interface E2BSandboxOptions {
+  apiKey?: string;
+  template?: string;
+  timeoutMs?: number;
+  workDir?: string;
+  envs?: Record<string, string>;
+  metadata?: Record<string, string>;
+  allowInternetAccess?: boolean;
+  execTimeoutMs?: number;
+  sandboxId?: string;
+  domain?: string;
+}
+```
+
+### E2BTemplateConfig
+
+```typescript
+interface E2BTemplateConfig {
+  alias: string;
+  base: 'python' | 'node' | 'debian' | 'ubuntu' | 'custom';
+  baseVersion?: string;
+  dockerfile?: string;
+  aptPackages?: string[];
+  pipPackages?: string[];
+  npmPackages?: string[];
+  buildCommands?: string[];
+  workDir?: string;
+  cpuCount?: number;
+  memoryMB?: number;
+}
+```
+
+---
+
 ## References
 
 - [API Reference](./api.md)

@@ -36,15 +36,15 @@ npm run test:all
 
 ### 集成测试配置
 
-集成测试会直接调用真实模型 API，请在项目根目录创建 `.env.test`：
+集成测试会直接调用真实模型 API，请在项目根目录创建 `.env.test`（可参考 `.env.test.example`）：
 
 ```ini
-KODE_SDK_TEST_PROVIDER_BASE_URL=https://api.moonshot.cn/anthropic
-KODE_SDK_TEST_PROVIDER_API_KEY=<your-api-key>
-KODE_SDK_TEST_PROVIDER_MODEL=kimi-k2-turbo-preview
+ANTHROPIC_API_KEY=sk-...
+ANTHROPIC_MODEL_ID=claude-sonnet-4-20250514  # 可选，默认 claude-sonnet-4-20250514
+ANTHROPIC_BASE_URL=https://api.anthropic.com  # 可选，默认 https://api.anthropic.com
 ```
 
-如需放置在其它位置，可通过环境变量 `KODE_SDK_TEST_ENV_PATH` 指向该文件。缺少配置时，集成测试将提示创建方式并终止。
+缺少 `ANTHROPIC_API_KEY` 时，集成测试将提示创建方式并终止。
 
 ### 集成测试支撑工具
 
