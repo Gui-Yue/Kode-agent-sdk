@@ -5,7 +5,7 @@ import {
   ControlPermissionRequiredEvent,
   MonitorErrorEvent,
   MonitorToolExecutedEvent,
-} from '../src';
+} from '@shareai-lab/kode-sdk';
 import { createRuntime } from './shared/runtime';
 
 async function main() {

@@ -684,6 +684,64 @@ const agentId = generateAgentId(); // e.g., 'agt-abc123xyz'
 
 ---
 
+## E2BSandbox
+
+Cloud sandbox powered by [E2B](https://e2b.dev) for isolated code execution.
+
+### Constructor
+
+```typescript
+new E2BSandbox(options?: E2BSandboxOptions)
+```
+
+### Methods
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `init()` | `async init(): Promise<void>` | Initialize (create or connect) sandbox |
+| `exec(cmd, opts?)` | `async exec(cmd: string, opts?: { timeoutMs?: number }): Promise<SandboxExecResult>` | Execute a command |
+| `dispose()` | `async dispose(): Promise<void>` | Kill sandbox and cleanup |
+| `getSandboxId()` | `getSandboxId(): string` | Get sandbox ID for persistence |
+| `getHostUrl(port)` | `getHostUrl(port: number): string` | Get accessible URL for a port |
+| `setTimeout(ms)` | `async setTimeout(timeoutMs: number): Promise<void>` | Extend sandbox lifetime |
+| `isRunning()` | `async isRunning(): Promise<boolean>` | Check if sandbox is alive |
+| `watchFiles(paths, listener)` | `async watchFiles(...): Promise<string>` | Watch file changes |
+| `unwatchFiles(id)` | `unwatchFiles(id: string): void` | Stop watching |
+| `getE2BInstance()` | `getE2BInstance(): E2BSdk` | Access underlying E2B SDK |
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `kind` | `'e2b'` | Sandbox type identifier |
+| `workDir` | `string` | Working directory path |
+| `fs` | `SandboxFS` | File system operations |
+
+---
+
+## E2BTemplateBuilder
+
+Static utility for building custom E2B sandbox templates.
+
+### Static Methods
+
+#### `E2BTemplateBuilder.build(config, opts?)`
+
+```typescript
+static async build(
+  config: E2BTemplateConfig,
+  opts?: { apiKey?: string; onLog?: (log: string) => void }
+): Promise<{ templateId: string; alias: string }>
+```
+
+#### `E2BTemplateBuilder.exists(alias, opts?)`
+
+```typescript
+static async exists(alias: string, opts?: { apiKey?: string }): Promise<boolean>
+```
+
+---
+
 ## References
 
 - [Types Reference](./types.md)

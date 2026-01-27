@@ -1,4 +1,4 @@
-import { AnthropicProvider, ModelConfig, ModelProvider } from '../../src';
+import { AnthropicProvider, ModelConfig, ModelProvider } from '@shareai-lab/kode-sdk';
 
 export function createDemoModelProvider(config: ModelConfig): ModelProvider {
   const apiKey =

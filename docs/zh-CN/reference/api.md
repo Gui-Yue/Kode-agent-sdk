@@ -684,6 +684,64 @@ const agentId = generateAgentId(); // 例如 'agt-abc123xyz'
 
 ---
 
+## E2BSandbox
+
+基于 [E2B](https://e2b.dev) 的云端沙箱，提供隔离的代码执行环境。
+
+### 构造函数
+
+```typescript
+new E2BSandbox(options?: E2BSandboxOptions)
+```
+
+### 方法
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `init()` | `async init(): Promise<void>` | 初始化（创建或连接）沙箱 |
+| `exec(cmd, opts?)` | `async exec(cmd: string, opts?: { timeoutMs?: number }): Promise<SandboxExecResult>` | 执行命令 |
+| `dispose()` | `async dispose(): Promise<void>` | 销毁沙箱并清理资源 |
+| `getSandboxId()` | `getSandboxId(): string` | 获取沙箱 ID（用于持久化） |
+| `getHostUrl(port)` | `getHostUrl(port: number): string` | 获取端口的可访问 URL |
+| `setTimeout(ms)` | `async setTimeout(timeoutMs: number): Promise<void>` | 延长沙箱生命周期 |
+| `isRunning()` | `async isRunning(): Promise<boolean>` | 检查沙箱是否运行中 |
+| `watchFiles(paths, listener)` | `async watchFiles(...): Promise<string>` | 监听文件变更 |
+| `unwatchFiles(id)` | `unwatchFiles(id: string): void` | 停止监听 |
+| `getE2BInstance()` | `getE2BInstance(): E2BSdk` | 获取底层 E2B SDK 实例 |
+
+### 属性
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `kind` | `'e2b'` | 沙箱类型标识 |
+| `workDir` | `string` | 工作目录路径 |
+| `fs` | `SandboxFS` | 文件系统操作 |
+
+---
+
+## E2BTemplateBuilder
+
+构建自定义 E2B 沙箱模板的静态工具类。
+
+### 静态方法
+
+#### `E2BTemplateBuilder.build(config, opts?)`
+
+```typescript
+static async build(
+  config: E2BTemplateConfig,
+  opts?: { apiKey?: string; onLog?: (log: string) => void }
+): Promise<{ templateId: string; alias: string }>
+```
+
+#### `E2BTemplateBuilder.exists(alias, opts?)`
+
+```typescript
+static async exists(alias: string, opts?: { apiKey?: string }): Promise<boolean>
+```
+
+---
+
 ## 参考资料
 
 - [类型参考](./types.md)

@@ -7,7 +7,7 @@ import {
   MonitorErrorEvent,
   MonitorToolExecutedEvent,
   Room,
-} from '../src';
+} from '@shareai-lab/kode-sdk';
 import { createRuntime } from './shared/runtime';
 
 function configFor(templateId: string): AgentConfig {

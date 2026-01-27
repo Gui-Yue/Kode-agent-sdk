@@ -71,6 +71,8 @@ export { Store, JSONStore, createStore, createExtendedStore } from './infra/stor
 export { SqliteStore } from './infra/db/sqlite/sqlite-store';
 export { PostgresStore } from './infra/db/postgres/postgres-store';
 export { Sandbox, LocalSandbox, SandboxKind } from './infra/sandbox';
+export { E2BSandbox, E2BFS, E2BTemplateBuilder } from './infra/e2b';
+export type { E2BSandboxOptions, E2BTemplateConfig } from './infra/e2b';
 export {
   ModelProvider,
   ModelConfig,

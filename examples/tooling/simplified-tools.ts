@@ -16,7 +16,7 @@ import {
   tool,
   extractTools,
   EnhancedToolContext,
-} from '../../src';
+} from '@shareai-lab/kode-sdk';
 import { createRuntime } from '../shared/runtime';
 
 // ============================================

@@ -14,11 +14,13 @@ test-workspace/
 .DS_Store
 test-cli.ts
 .env.test
+.data
 
 # Ignore all markdown files except README.md and files in doc/docs folders
 *.md
 !README.md
 !README.zh-CN.md
+!README.en.md
 !ROADMAP.md
 !doc/**/*.md
 !docs/**/*.md

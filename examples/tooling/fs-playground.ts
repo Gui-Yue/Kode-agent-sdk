@@ -8,7 +8,7 @@ import {
   AgentTemplateRegistry,
   ToolRegistry,
   builtin,
-} from '../../src';
+} from '@shareai-lab/kode-sdk';
 
 async function runFsDemo() {
   const store = new JSONStore('./.kode');

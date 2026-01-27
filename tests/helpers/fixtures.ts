@@ -5,9 +5,7 @@
 import path from 'path';
 import fs from 'fs';
 
-const ENV_PATH = process.env.KODE_SDK_TEST_ENV_PATH
-  ? path.resolve(process.cwd(), process.env.KODE_SDK_TEST_ENV_PATH)
-  : path.resolve(__dirname, '../../.env.test');
+const ENV_PATH = path.resolve(__dirname, '../../.env.test');
 
 function parseEnvFile(filePath: string): Record<string, string> {
   const content = fs.readFileSync(filePath, 'utf-8');
@@ -54,22 +52,21 @@ export function loadIntegrationConfig(): IntegrationConfig {
   }
 
   const get = (key: string): string | undefined => {
-    return process.env[key] ?? envConfig[key];
+    const val = process.env[key] || envConfig[key];
+    return val?.trim() || undefined;
   };
 
-  const baseUrl = get('KODE_SDK_TEST_PROVIDER_BASE_URL');
-  const apiKey = get('KODE_SDK_TEST_PROVIDER_API_KEY');
-  const model = get('KODE_SDK_TEST_PROVIDER_MODEL');
+  const apiKey = get('ANTHROPIC_API_KEY');
+  const model = get('ANTHROPIC_MODEL_ID') || 'claude-sonnet-4-20250514';
+  const baseUrl = get('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com';
 
-  if (!baseUrl || !apiKey || !model) {
+  if (!apiKey) {
     const hint = [
-      `未找到完整的集成测试配置.`,
-      `请在项目根目录创建 .env.test，内容示例：\n`,
-      'KODE_SDK_TEST_PROVIDER_BASE_URL=https://api.moonshot.cn/anthropic',
-      'KODE_SDK_TEST_PROVIDER_API_KEY=your-api-key',
-      'KODE_SDK_TEST_PROVIDER_MODEL=kimi-k2-turbo-preview',
-      '',
-      `如需自定义路径，可设置环境变量 KODE_SDK_TEST_ENV_PATH 指向配置文件。`
+      `未找到集成测试配置.`,
+      `请在项目根目录创建 .env.test（可参考 .env.test.example），至少包含：\n`,
+      'ANTHROPIC_API_KEY=sk-...',
+      'ANTHROPIC_MODEL_ID=claude-sonnet-4-20250514  # 可选',
+      'ANTHROPIC_BASE_URL=https://api.anthropic.com  # 可选',
     ].join('\n');
     throw new Error(hint);
   }

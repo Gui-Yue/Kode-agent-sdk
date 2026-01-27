@@ -18,7 +18,7 @@ import {
   SandboxFactory,
   ToolRegistry,
   builtin,
-} from '../src';
+} from '@shareai-lab/kode-sdk';
 
 type Mode = 'modelConfig' | 'provider' | 'factory';
 

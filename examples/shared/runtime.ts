@@ -6,7 +6,7 @@ import {
   SandboxFactory,
   ToolRegistry,
   builtin,
-} from '../../src';
+} from '@shareai-lab/kode-sdk';
 import { createDemoModelProvider } from './demo-model';
 
 type BuiltinGroup = 'fs' | 'bash' | 'todo' | 'task';

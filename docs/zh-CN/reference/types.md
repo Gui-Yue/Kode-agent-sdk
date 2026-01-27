@@ -477,6 +477,45 @@ interface ReminderOptions {
 
 ---
 
+## E2B 类型
+
+### E2BSandboxOptions
+
+```typescript
+interface E2BSandboxOptions {
+  apiKey?: string;              // E2B API Key
+  template?: string;            // 模板 ID/别名，默认 'base'
+  timeoutMs?: number;           // 沙箱超时，默认 300_000
+  workDir?: string;             // 工作目录，默认 '/home/user'
+  envs?: Record<string, string>; // 环境变量
+  metadata?: Record<string, string>; // 自定义元数据
+  allowInternetAccess?: boolean; // 允许联网，默认 true
+  execTimeoutMs?: number;       // 命令超时，默认 120_000
+  sandboxId?: string;           // 连接已有沙箱
+  domain?: string;              // API 域名
+}
+```
+
+### E2BTemplateConfig
+
+```typescript
+interface E2BTemplateConfig {
+  alias: string;                // 模板别名
+  base: 'python' | 'node' | 'debian' | 'ubuntu' | 'custom';
+  baseVersion?: string;         // 版本号
+  dockerfile?: string;          // 自定义 Dockerfile
+  aptPackages?: string[];       // 系统包
+  pipPackages?: string[];       // Python 包
+  npmPackages?: string[];       // Node.js 包
+  buildCommands?: string[];     // 构建命令
+  workDir?: string;             // 工作目录
+  cpuCount?: number;            // CPU 核数，默认 2
+  memoryMB?: number;            // 内存 MB，默认 512
+}
+```
+
+---
+
 ## 参考资料
 
 - [API 参考](./api.md)

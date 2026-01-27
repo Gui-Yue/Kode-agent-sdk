@@ -7,7 +7,7 @@ import {
   MonitorErrorEvent,
   MonitorToolExecutedEvent,
   ToolCall,
-} from '../src';
+} from '@shareai-lab/kode-sdk';
 import { createRuntime } from './shared/runtime';
 
 async function main() {

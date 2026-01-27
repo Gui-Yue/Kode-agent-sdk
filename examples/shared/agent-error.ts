@@ -1,4 +1,4 @@
-import type { Agent } from '../../src';
+import type { Agent } from '@shareai-lab/kode-sdk';
 
 export function createErrorTracker(
   agent: Agent,

@@ -10,6 +10,7 @@
 - **Long-Running & Resumable** - Seven-stage checkpoints with Safe-Fork-Point for crash recovery
 - **Multi-Agent Collaboration** - AgentPool, Room messaging, and task delegation
 - **Enterprise Persistence** - SQLite/PostgreSQL support with unified WAL
+- **Cloud Sandbox** - [E2B](https://e2b.dev) integration for isolated remote code execution
 - **Extensible Ecosystem** - MCP tools, custom Providers, Skills system
 
 ## Quick Start

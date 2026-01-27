@@ -1,6 +1,6 @@
 import './shared/load-env';
 
-import { OpenAIProvider, Message, ModelStreamChunk } from '../src';
+import { OpenAIProvider, Message, ModelStreamChunk } from '@shareai-lab/kode-sdk';
 
 /**
  * OpenRouter uses an OpenAI-compatible API, so we use OpenAIProvider with

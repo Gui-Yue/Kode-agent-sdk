@@ -23,7 +23,7 @@ import {
   ToolRegistry,
   SandboxFactory,
   builtin,
-} from '../src';
+} from '@shareai-lab/kode-sdk';
 
 async function main() {
   console.log('=== SQLite Store Example ===\n');

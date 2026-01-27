@@ -7,7 +7,7 @@ import {
   JSONStore,
   SandboxFactory,
   ToolRegistry,
-} from '../src';
+} from '@shareai-lab/kode-sdk';
 
 function createOpenRouterRuntime(setup: (ctx: { templates: AgentTemplateRegistry; tools: ToolRegistry; sandboxFactory: SandboxFactory }) => void): AgentDependencies {
   const store = new JSONStore('./.kode');
